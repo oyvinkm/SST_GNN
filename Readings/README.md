@@ -8,6 +8,7 @@
 ## Readings on GNN:
 *Chapter 3: Basic on GNNs:*
 * [Graph Neural Networks](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/GNN%20Book/GNNBook_ch3.pdf)
+* [GNN Node Classification](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/GNN%20Book/GNNBook_ch4.pdf)
   
 *About Spatio Temporal Graph Convolutional Networks*
 * [Spatio_Temporal Graph CN](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Spatio-Temporal%20Graph%20Convolutional%20Networks.pdf)
