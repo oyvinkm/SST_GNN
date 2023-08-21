@@ -5,4 +5,4 @@
 ## Readings on autoencoder
 
 ## Readings on GNN
-[a relative link](Spatio-Temporal Graph Convolutional Networks.pdf)
+[Spatio_Temporal Graph CN](Spatio-Temporal Graph Convolutional Networks.pdf)
