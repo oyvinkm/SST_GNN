@@ -6,7 +6,11 @@
 ## Readings on autoencoder:
 * [Variational Graph Auto-Encoders](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Variational_Graph_Auto-Encoders.pdf)
 ## Readings on GNN:
-*Chapter 3: Basic on GNNs:*
+
+*Early article on GNN: 
+* [Semi-Supervised Classification with GCN](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Semi-Supervised%20Classification%20with%20Graph%20Convolutional%20Networks.pdf)
+  
+*From GNN Book::*
 * [Graph Neural Networks](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/GNN%20Book/GNNBook_ch3.pdf)
 * [GNN Node Classification](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/GNN%20Book/GNNBook_ch4.pdf)
 * [GNN Graph Classification](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/GNN%20Book/GNNBook_ch9.pdf)
