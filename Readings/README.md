@@ -27,3 +27,4 @@
 * [Temporal Graph Benchmark](https://tgb.complexdatalab.com/)
 * [Ice-Cube Data](https://www.kaggle.com/competitions/icecube-neutrinos-in-deep-ice)
 * [References GNN Book](https://graph-neural-networks.github.io/static/file/reference.pdf)
+* [Article on GCN](https://tkipf.github.io/graph-convolutional-networks/)
