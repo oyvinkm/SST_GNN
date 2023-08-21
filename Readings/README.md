@@ -6,7 +6,7 @@
 ## Readings on autoencoder:
 * [Variational Graph Auto-Encoders](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Variational_Graph_Auto-Encoders.pdf)
 ## Readings on GNN:
-*Basic on GNNs:*
+*Chapter 3: Basic on GNNs:*
 * [Graph Neural Networks](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/GNN%20Book/GNNBook_ch3.pdf)
   
 *About Spatio Temporal Graph Convolutional Networks*
