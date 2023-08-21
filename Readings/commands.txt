@@ -1,0 +1,22 @@
+// Set maximum and minimum frequency to one thing
+
+
+// Set maximum
+sudo cpupower -c all frequency-set -u 2.3GHz 
+sudo cpupower -c all frequency-set -d 2.3GHz 
+// and minimum
+
+// Get cpu info
+cat /proc/cpuinfo | grep MHz
+
+// Put msr into the kernel
+modprobe msr
+
+//read undervolt
+undervolt --read
+
+//set undervolt
+undervolt --core -100 --cache -100
+
+
+./operation -i 1000000000 -s -1 -e -150 -1 0x1122334455667788 -2 0xdeadbeef -v 1
