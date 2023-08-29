@@ -20,7 +20,7 @@
 * [Spatio_Temporal Graph CN](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Spatio-Temporal%20Graph%20Convolutional%20Networks.pdf)
 
 *Learning Mesh Based Simulation With Graph Networks*
-
+* [Mesh Based Simulation](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/2010.03409.pdf)
   
 *About Self Supervised Learning GNNs from GNN Book*
 * [Self Supervised Learning GNN](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/chapter18.pdf)
