@@ -28,6 +28,9 @@
 *About Self Supervised Learning GNNs from GNN Book*
 * [Self Supervised Learning GNN](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/chapter18.pdf)
 
+*About self supervised learning on graphs*
+* [SSL learning on graphs](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/SSL%20learning%20on%20graphs.pdf)
+
 ## Technical Resources:
 * [PyTorch Geometric](https://pytorch-geometric.readthedocs.io/en/latest/)
 * [Temporal Graph Benchmark](https://tgb.complexdatalab.com/)
