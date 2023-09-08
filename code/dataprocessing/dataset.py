@@ -9,7 +9,7 @@ from torch_geometric.data import Data
 import torch
 import math
 import time
-
+# tra = trajectorie
 class DatasetBase():
   def __init__(self, max_epochs=1, files=None):
     
