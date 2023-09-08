@@ -19,3 +19,6 @@ You can download the preprocessed data from: [here](https://drive.google.com/dri
     │   │    │   ├── valid.h5
     │   ├── datasets
     └── ├──autoencoder
+
+*Cylinder flow data* 
+Data is represented as: `[Data(x=[1923, 11], edge_index=[2, 11070], edge_attr=[11070, 3], y=[1923, 2], p=[1923, 1], cells=[3612, 3], mesh_pos=[1923, 2])]`
