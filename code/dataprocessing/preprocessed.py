@@ -2,7 +2,7 @@
 import torch
 import random
 import pandas as pd
-import torch_scatter
+# import torch_scatter
 import torch.nn as nn
 from torch.nn import Linear, Sequential, LayerNorm, ReLU
 from torch_geometric.nn.conv import MessagePassing
