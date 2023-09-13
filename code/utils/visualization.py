@@ -34,13 +34,13 @@ def save_plots(args, losses, test_losses, velo_val_losses):
 
 
 
-def make_animation(gs, pred, evl, path, name , skip = 2, save_anim = True, plot_variables = False):
+def make_animation(gs, path, name , skip = 2, save_anim = True, plot_variables = False):
     '''
     input gs is a dataloader and each entry contains attributes of many timesteps.
 
     '''
     print('Generating velocity fields...')
-    fig, axes = plt.subplots(3, 1, figsize=(20, 16))
+    fig, ax = plt.subplots(1, 1, figsize=(20, 16))
     num_steps = len(gs) # for a single trajectory
     num_frames = num_steps // skip
     print(num_steps)
@@ -51,53 +51,35 @@ def make_animation(gs, pred, evl, path, name , skip = 2, save_anim = True, plot_
         bb_min = gs[0].x[:, 0:2].min() # first two columns are velocity
         bb_max = gs[0].x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
                                           # gs and prediction plots
-        bb_min_evl = evl[0].x[:, 0:2].min()  # first two columns are velocity
-        bb_max_evl = evl[0].x[:, 0:2].max()  # use max and min velocity of gs dataset at the first step for both 
-                                          # gs and prediction plots
         count = 0
 
-        for ax in axes:
-            ax.cla()
-            ax.set_aspect('equal')
-            ax.set_axis_off()
-            
-            pos = gs[step].mesh_pos 
-            faces = gs[step].cells
-            if (count == 0):
-                # ground truth
-                velocity = gs[step].x[:, 0:2]
-                title = 'Ground truth:'
-            elif (count == 1):
-                velocity = pred[step].x[:, 0:2]
-                title = 'Prediction:'
-            else: 
-                velocity = evl[step].x[:, 0:2]
-                title = 'Error: (Prediction - Ground truth)'
 
-            triang = mtri.Triangulation(pos[:, 0], pos[:, 1], faces)
-            if (count <= 1):
-                # absolute values
-                
-                mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
-                ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
-            else:
-                # error: (pred - gs)/gs
-                mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min_evl, vmax=bb_max_evl, shading='flat' ) # x-velocity
-                ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
-                #ax.triplot(triang, lw=0.5, color='0.5')
+        ax.cla()
+        ax.set_aspect('equal')
+        ax.set_axis_off()
+        
+        pos = gs[step].mesh_pos 
+        faces = gs[step].cells
+        velocity = gs[step].x[:, 0:2]
+        title = 'Ground truth:'
+        
 
-            ax.set_title('{} Trajectory {} Step {}'.format(title, traj, step), fontsize = '20')
-            #ax.color
+        triang = mtri.Triangulation(pos[:, 0], pos[:, 1], faces)
+        mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
+        ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
 
-            #if (count == 0):
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes('right', size='5%', pad=0.05)
-            clb = fig.colorbar(mesh_plot, cax=cax, orientation='vertical')
-            clb.ax.tick_params(labelsize=20) 
-            
-            clb.ax.set_title('x velocity (m/s)',
-                             fontdict = {'fontsize': 20})
-            count += 1
+
+        ax.set_title('{} Trajectory {} Step {}'.format(title, traj, step), fontsize = '20')
+        #ax.color
+
+        #if (count == 0):
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        clb = fig.colorbar(mesh_plot, cax=cax, orientation='vertical')
+        clb.ax.tick_params(labelsize=20) 
+        
+        clb.ax.set_title('x velocity (m/s)',
+                            fontdict = {'fontsize': 20})
         return fig,
 
     # Save animation for visualization

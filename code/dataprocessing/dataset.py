@@ -76,29 +76,16 @@ class DatasetBase():
   
   @staticmethod
   def datas_to_graph(datas):
-    print('------------------------')
-    print(f'Length: {len(datas)}')
-    print(f'Datas[0]: {datas[0].shape}')
-    print(f'Datas[1]: {datas[1].shape}')
-    print(f'Datas[2]: {datas[2].shape}')
-    print(f'Datas[3]: {datas[3].shape}')
-    print(f'Datas[4]: {datas[4].shape}')
-    print(f'Datas[5]: {datas[5].shape}')
     time_vector = np.ones((datas[0].shape[0], 1))*datas[5]
-    print(f'Time vector: {time_vector.shape}')
     node_attr = np.hstack((datas[1], datas[2][0], datas[4][0], time_vector))
-    print(f'Node attribute: {node_attr.shape}')
     
     "node_type, cur_v, pressure, time"
     crds = torch.as_tensor(datas[0], dtype=torch.float)
-    print(f'coordinates: {crds.shape}')
 
     target = datas[2][1]
-    print(f'Target: {target.shape}')
     node_attr = torch.as_tensor(node_attr, dtype=torch.float)
     target = torch.from_numpy(target)
     face = torch.as_tensor(datas[3].T, dtype=torch.long)
-    print(f'Face: {face.shape}')
     g = Data(x=node_attr, face=face, y=target, pos=crds)
     return g
 
@@ -119,29 +106,15 @@ class DatasetBase():
     selected_tra_readed_idx = self.opened_tra_readed_idx[selected_tra]
     selected_frame = self.opened_tra_readed_rnd_idx[selected_tra][selected_tra_readed_idx+1]
     self.opened_tra_readed_idx[selected_tra] += 1
-    print('------------------------')
-    print(f'Selected readed idx: {selected_tra_readed_idx}')
-    print(f'Selected frame: {selected_frame}')
     datas = []
-    print('------------------------')
     for k in self.data_keys:
       if k in ['velocity', 'pressure']:
-        print('------------------------')
-        print(f'Key: {k}')
-        print(f'Data selected frame: {data[k][selected_frame].shape}')
-        print(f'Data selected frame + 1: {data[k][selected_frame + 1].shape}')
         r = np.array((data[k][selected_frame], data[k][selected_frame + 1]), dtype=np.float32)
-        print(f'R: {r.shape}')
       else:
-        print('------------------------')
-        print(f'Key: {k}')
-        print(f'Data selected frame: {data[k][selected_frame].shape}')
         r = data[k][selected_frame]
-        print(f'R: {r.shape}')
         if k in ['node_type', 'cells']:
           r = r.astype(np.int32)
       datas.append(r)
-    print(f'datas[5]: {np.array([self.time_interval * selected_frame])}')
     datas.append(np.array([self.time_interval * selected_frame], dtype=np.float32))
     #('pos', 'node_type', 'velocity', 'cells', 'pressure', 'time')
     g = self.datas_to_graph(datas)

@@ -21,23 +21,11 @@ import tensorflow as tf
 
 
 
-def filepath(filename = None):
-  root_dir = os.path.pardir
-  dataset_dir = os.path.join(root_dir, 'data/preprocessed/')
-  if filename == '30':
-    file_path = os.path.join(dataset_dir, 'meshgraphnets_miniset30traj5ts_vis.pt')
-  elif filename == '100':
-    file_path = os.path.join(dataset_dir, 'meshgraphnets_miniset100traj25ts_vis.pt')
-  elif filename == 'test':
-    file_path = os.path.join(dataset_dir, 'test_processed_set.pt')
-  else: 
-    file_path = os.path.join(dataset_dir, 'meshgraphnets_miniset5traj_vis.pt')
-  return file_path
 
-def loadData(args):
+def load_preprocessed(args):
   """
   Args:
-    args.dataset: ['30', '100', 'test', None] which dataset to load, length = train_size + test_size
+    args.file_path
     train_size: int size of training data
     test_size: int size of test data
     batch_size: int batch size 
@@ -45,8 +33,7 @@ def loadData(args):
 
   returns train_loader, test_loader, stats_list
   """
-  file_path = filepath(args.dataset)
-  dataset = torch.load(file_path)[:args.train_size + args.test_size]
+  dataset = torch.load(args.file_path)[:args.train_size + args.test_size]
   if args.shuffle:
     random.shuffle(dataset)
   stats_list = get_stats(dataset)
@@ -57,9 +44,10 @@ def loadData(args):
 
 
 def loadh5py(filename, no_trajectories = 1):
-  
-  #root_dir = os.path.pardir
-  #dataset_dir = os.path.join(root_dir, 'data/cylinder_flow')
+  """
+  Loads no_trajectories from h5py file
+  file : either, test, train or valid
+  """
   dataset_dir = 'data/cylinder_flow'
   #Define the data folder and data file name
   if filename not in ['test', 'train', 'valid']:
@@ -87,7 +75,6 @@ def loadh5py(filename, no_trajectories = 1):
           #for the last one, which does not have a following time step to produce
           #node output values
           for ts in range(len(data[trajectory]['velocity'])-1):
-
               if(ts==number_ts):
                   break
 
@@ -130,30 +117,17 @@ def loadh5py(filename, no_trajectories = 1):
   return data_list
 
 
+def save_data_list(data_list, file, data_folder = None):
+  """
+  data_list : list of graphs loaded from a .h5 file
+  file: name of the file you wish to save
+  """
+  if data_folder is None: 
+    data_folder = 'data/trajectories'
+  if not os.path.exists(data_folder):
+        os.makedirs(data_folder)
+  torch.save(data_list, os.path.join(data_folder, f'{file}.pt'))
 
-# loader = DataLoader(dataset[:args.train_size], batch_size=args.batch_size, shuffle=False)
-# test_loader = DataLoader(dataset[args.train_size:], batch_size=args.batch_size, shuffle=False)
-
-""" class objectview(object):
-    def __init__(self, d):
-        self.__dict__ = d
-
-for args in [
-        {'model_type': 'meshgraphnet',  
-         'dataset' : 'test',
-         'num_layers': 10,
-         'batch_size': 1, 
-         'hidden_dim': 10, 
-         'train_size': 45, 
-         'test_size': 10, 
-         'num_workers': 0,
-         'shuffle': True}
-    ]:
-        args = objectview(args)
-
-torch.manual_seed(5)  #Torch
-random.seed(5)        #Python
-np.random.seed(5)     #NumPy """
 
 
 
