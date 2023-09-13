@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import random
 from train import train
-from utils.utils import save_plots
+from utils.visualization import save_plots
 class objectview(object):
     def __init__(self, d):
         self.__dict__ = d
