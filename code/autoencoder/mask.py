@@ -10,7 +10,30 @@ from torch_geometric.transforms import BaseTransform
     - Implement and understand the loss functions for Edge and NodeMasking
 """
 
-@functional_transform('edge_mask')
+@functional_transform('AttributeMask')
+class AttributeMask(BaseTransform):
+    """
+    Sets attributes of random nodes to 0. The nodes are chosen with probability p
+    NB!: The attributes are additionally converted to 32 bit floats
+    returns: obj: 'dataobject': the dataobject with masked_features
+             obj: 'cached_features': the features that was given as input,
+                   converted to 32 bit float
+    """
+    def __init__(self, p=0.1):
+        self.p = p
+    
+    def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
+        dataobject.x = dataobject.x.to(torch.float32)
+        cached_features = dataobject.x
+        idx_train = torch.arange(dataobject.x.shape[0])
+        nfeat = dataobject.x.shape[1]
+        masked_nodes = torch.rand(idx_train.size(0)) <= self.p
+        masked_indicator = torch.zeros(nfeat)
+        dataobject.x[masked_nodes] = masked_indicator
+
+        return dataobject, cached_features
+
+@functional_transform('my_edge_mask')
 class EdgeMask(BaseTransform):
     r"""Removes each edge in the graph with the probability given in :obj:'p' 
         (functional name: :obj:`edge_mask`).
@@ -24,42 +47,11 @@ class EdgeMask(BaseTransform):
         
     def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
         edge_index, edge_mask = dropout_edge(dataobject.edge_index, self.p, force_undirected=True)
-        print("edge_mask = ", edge_mask)
-        print("edge_index =", edge_index)
-        self.masked_edges = dataobject.edge_index[np.where(edge_mask == 0)] # save the edges where the edge_mask is False
         dataobject.edge_index = edge_index
         return dataobject
 
-@functional_transform('node_mask')
-class NodeMask(BaseTransform):
-    r"""Removes each Node in the graph with the probability given in :obj:'p' 
-        (functional name: :obj:`node_mask`).
 
-    Args:
-        p (float): The probability to remove each node
-            (default: :obj:`0.5`)
-    """
-    def __init__(self, p=0.5):
-        self.p = p
-    
-    def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
-        dataobject.edge_index, _, node_mask = dropout_node(dataobject.edge_index, p=self.p)
-        x = dataobject.x[np.where(node_mask==1)]
-        dataobject.x = x
-        return dataobject
 
-edge_index = torch.tensor([[0, 1, 1, 2, 2, 3],
-                           [1, 0, 2, 1, 3, 2]])
-
-x = torch.tensor([[-1],[0],[1],[2]])
-dat = Data(x, edge_index)
-
-transform = EdgeMask(p=0.5)
-data = transform(dat)
-
-# print(transform.masked_edges)
-
-print(data)
 
 """From 
 https://pytorch-geometric.readthedocs.io/en/latest/get_started/introduction.html
