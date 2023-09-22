@@ -8,8 +8,8 @@ import os
 import numpy as np
 import torch
 from torch_geometric.data import Data
-from .normalization import get_stats
-from .triangle_to_edges import triangles_to_edges, NodeType
+from normalization import get_stats
+from triangle_to_edges import triangles_to_edges, NodeType
 import h5py
 import tensorflow as tf
 
@@ -48,7 +48,7 @@ def loadh5py(filename, no_trajectories = 1):
   Loads no_trajectories from h5py file
   file : either, test, train or valid
   """
-  dataset_dir = 'data/cylinder_flow'
+  dataset_dir = os.path.join(os.getcwd(), 'data/cylinder_flow')
   #Define the data folder and data file name
   if filename not in ['test', 'train', 'valid']:
      filename = 'test'
@@ -65,9 +65,9 @@ def loadh5py(filename, no_trajectories = 1):
   number_ts = 600
 
   with h5py.File(datafile, 'r') as data:
-
+      
       for i,trajectory in enumerate(data.keys()):
-          if(i==no_trajectories):
+          if(i == no_trajectories):
               break
           print("Trajectory: ",i)
 
@@ -83,7 +83,9 @@ def loadh5py(filename, no_trajectories = 1):
               #Note that it's faster to convert to numpy then to torch than to
               #import to torch from h5 format directly
               momentum = torch.tensor(np.array(data[trajectory]['velocity'][ts]))
+                 
               #node_type = torch.tensor(np.array(data[trajectory]['node_type'][ts]))
+              tmp = tf.convert_to_tensor(data[trajectory]['node_type'][0])
               node_type = torch.tensor(np.array(tf.one_hot(tf.convert_to_tensor(data[trajectory]['node_type'][0]), NodeType.SIZE))).squeeze(1)
               x = torch.cat((momentum,node_type),dim=-1).type(torch.float)
 
@@ -127,6 +129,10 @@ def save_data_list(data_list, file, data_folder = None):
   if not os.path.exists(data_folder):
         os.makedirs(data_folder)
   torch.save(data_list, os.path.join(data_folder, f'{file}.pt'))
+
+
+data = loadh5py('test')
+print(data[1])
 
 
 
