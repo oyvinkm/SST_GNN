@@ -1,4 +1,4 @@
-from model import MeshGraphNet, ProcessorLayer
+from model import MeshGraphNet, AutoEncoder
 import torch
 from torch_geometric.loader import DataLoader
 import torch.optim as optim
@@ -8,6 +8,7 @@ import copy
 from dataprocessing.utils.normalization import get_stats, normalize, unnormalize
 import numpy as np
 import os
+
 
 def build_optimizer(args, params):
     weight_decay = args.weight_decay
@@ -54,10 +55,12 @@ def train(dataset, device, stats_list, args):
     # build model
     num_node_features = dataset[0].x.shape[1]
     num_edge_features = dataset[0].edge_attr.shape[1]
-    num_classes = 2 # the dynamic variables have the shape of 2 (velocity)
-
-    model = MeshGraphNet(num_node_features, num_edge_features, args.hidden_dim, num_classes,
-                            args).to(device)
+    #num_classes = 2 # the dynamic variables have the shape of 2 (velocity)
+    if args.model_type == 'autoencoder':
+        model = AutoEncoder(num_node_features, args.hidden_dim, args.num_classes, args).to(device)
+    else:
+        model = MeshGraphNet(num_node_features, num_edge_features, args.hidden_dim, num_classes,
+                                args).to(device)
     scheduler, opt = build_optimizer(args, model.parameters())
 
     # train
@@ -75,7 +78,10 @@ def train(dataset, device, stats_list, args):
             #data needs to be preserved in order to correctly calculate the loss
             batch=batch.to(device)
             opt.zero_grad()         #zero gradients each time
-            pred = model(batch,mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge)
+            if args.model_type == 'autoencoder':
+                pred = model(batch, mean_vec_x, std_vec_x)  
+            else:
+                pred = model(batch,mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge)
             loss = model.loss(pred,batch,mean_vec_y,std_vec_y)
             loss.backward()         #backpropagate loss
             opt.step()
@@ -89,11 +95,11 @@ def train(dataset, device, stats_list, args):
             if (args.save_velo_val):
                 # save velocity evaluation
                 test_loss, velo_val_rmse = test(test_loader,device,model,mean_vec_x,std_vec_x,mean_vec_edge,
-                                 std_vec_edge,mean_vec_y,std_vec_y, args.save_velo_val)
+                                 std_vec_edge,mean_vec_y,std_vec_y, args.save_velo_val, model_type=args.model_type)
                 velo_val_losses.append(velo_val_rmse.item())
             else:
                 test_loss, _ = test(test_loader,device,model,mean_vec_x,std_vec_x,mean_vec_edge,
-                                 std_vec_edge,mean_vec_y,std_vec_y, args.save_velo_val)
+                                 std_vec_edge,mean_vec_y,std_vec_y, args.save_velo_val, model_type=args.model_type)
 
             test_losses.append(test_loss.item())
 
@@ -118,11 +124,11 @@ def train(dataset, device, stats_list, args):
 
         if(epoch%100==0):
             if (args.save_velo_val):
-                print("train loss", str(round(total_loss, 2)),
-                      "test loss", str(round(test_loss.item(), 2)),
+                print("train loss", str(round(total_loss, 4)),
+                      "test loss", str(round(test_loss.item(), 4)),
                       "velo loss", str(round(velo_val_rmse.item(), 5)))
             else:
-                print("train loss", str(round(total_loss,2)), "test loss", str(round(test_loss.item(),2)))
+                print("train loss", str(round(total_loss,2)), "test loss", str(round(test_loss.item(),4)))
 
 
             if(args.save_best_model):
@@ -150,9 +156,11 @@ def test(loader,device,test_model,
         with torch.no_grad():
 
             #calculate the loss for the model given the test set
-            pred = test_model(data,mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge)
-            loss += test_model.loss(pred, data,mean_vec_y,std_vec_y)
-
+            if model_type == 'autoencoder':
+                pred = test_model(data, mean_vec_x, std_vec_x)
+            else:
+                pred = test_model(data,mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge)
+            loss = test_model.loss(pred,data,mean_vec_y,std_vec_y)
             #calculate validation error if asked to
             if (is_validation):
 
