@@ -3,8 +3,10 @@ import torch
 from torch_geometric.loader import DataLoader
 import torch.optim as optim
 from tqdm import trange
+import torch_geometric.transforms as T
 import pandas as pd
 import copy
+from mask import AttributeMask, EdgeMask
 from dataprocessing.utils.normalization import get_stats, normalize, unnormalize
 import numpy as np
 import os
@@ -31,6 +33,7 @@ def build_optimizer(args, params):
 
 
 def train(dataset, device, stats_list, args):
+
     '''
     Performs a training loop on the dataset for MeshGraphNets. Also calls
     test and validation functions.
@@ -47,6 +50,22 @@ def train(dataset, device, stats_list, args):
     loader = DataLoader(dataset[:args.train_size], batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(dataset[args.train_size:], batch_size=args.batch_size, shuffle=False)
 
+    # Set the transformation
+    if args.transformation == 'attributemask':
+        transform = T.Compose([
+            T.NormalizeFeatures(),
+            T.ToDevice(device),
+            AttributeMask(p = 0.2)
+        ])
+    elif args.transformation == 'edgemask':
+        transform = T.Compose([
+            T.NormalizeFeatures(),
+            T.ToDevice(device),
+            EdgeMask(p = 0.2)
+        ])
+    elif args.transformation == 'none':
+        transform = T.ToDevice(device)
+
     #The statistics of the data are decomposed
     [mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge,mean_vec_y,std_vec_y] = stats_list
     (mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge,mean_vec_y,std_vec_y)=(mean_vec_x.to(device),
@@ -55,7 +74,7 @@ def train(dataset, device, stats_list, args):
     # build model
     num_node_features = dataset[0].x.shape[1]
     num_edge_features = dataset[0].edge_attr.shape[1]
-    #num_classes = 2 # the dynamic variables have the shape of 2 (velocity)
+    num_classes = 2 # the dynamic variables have the shape of 2 (velocity)
     if args.model_type == 'autoencoder':
         model = AutoEncoder(num_node_features, args.hidden_dim, args.num_classes, args).to(device)
     else:
@@ -74,15 +93,16 @@ def train(dataset, device, stats_list, args):
         model.train()
         num_loops=0
         for batch in loader:
+            data = transform(batch).to(device)
             #Note that normalization must be done before it's called. The unnormalized
             #data needs to be preserved in order to correctly calculate the loss
             batch=batch.to(device)
             opt.zero_grad()         #zero gradients each time
             if args.model_type == 'autoencoder':
-                pred = model(batch, mean_vec_x, std_vec_x)  
+                pred = model(data, mean_vec_x, std_vec_x)  
             else:
-                pred = model(batch,mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge)
-            loss = model.loss(pred,batch,mean_vec_y,std_vec_y)
+                pred = model(data, mean_vec_x, std_vec_x, mean_vec_edge, std_vec_edge)
+            loss = model.loss(pred, batch, mean_vec_y, std_vec_y)
             loss.backward()         #backpropagate loss
             opt.step()
             total_loss += loss.item()

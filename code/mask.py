@@ -24,14 +24,13 @@ class AttributeMask(BaseTransform):
     
     def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
         dataobject.x = dataobject.x.to(torch.float32)
-        cached_features = dataobject.x
         idx_train = torch.arange(dataobject.x.shape[0])
         nfeat = dataobject.x.shape[1]
         masked_nodes = torch.rand(idx_train.size(0)) <= self.p
         masked_indicator = torch.zeros(nfeat)
         dataobject.x[masked_nodes] = masked_indicator
 
-        return dataobject, cached_features
+        return dataobject
 
 @functional_transform('my_edge_mask')
 class EdgeMask(BaseTransform):

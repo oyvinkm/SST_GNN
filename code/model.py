@@ -3,6 +3,7 @@ import torch_scatter
 import torch.nn as nn
 from torch.nn import Linear, Sequential, LayerNorm, ReLU
 from torch_geometric.nn.conv import MessagePassing
+from torch.nn import CrossEntropyLoss
 from torch_geometric.data import DataLoader
 from dataprocessing.utils.normalization import normalize, get_stats
 from torch_geometric.nn import GAE, VGAE, GCNConv
@@ -144,19 +145,20 @@ class MeshGraphNet(torch.nn.Module):
 
         """
 
+        self.transformation = args.transformation
+
         self.num_layers = args.num_layers
 
         # encoder convert raw inputs into latent embeddings
-        self.node_encoder = Sequential(Linear(input_dim_node , hidden_dim),
+        self.node_encoder = Sequential(Linear(input_dim_node, hidden_dim),
                               ReLU(),
-                              Linear( hidden_dim, hidden_dim),
+                              Linear(hidden_dim, hidden_dim),
                               LayerNorm(hidden_dim))
 
-        self.edge_encoder = Sequential(Linear( input_dim_edge , hidden_dim),
+        self.edge_encoder = Sequential(Linear(input_dim_edge, hidden_dim),
                               ReLU(),
-                              Linear( hidden_dim, hidden_dim),
-                              LayerNorm(hidden_dim)
-                              )
+                              Linear(hidden_dim, hidden_dim),
+                              LayerNorm(hidden_dim))
 
 
         self.processor = nn.ModuleList()
@@ -197,29 +199,41 @@ class MeshGraphNet(torch.nn.Module):
         for i in range(self.num_layers):
             x,edge_attr = self.processor[i](x,edge_index,edge_attr)
 
-        # step 3: decode latent node embeddings into physical quantities of interest
-
-        return self.decoder(x)
-
-    def loss(self, pred, inputs,mean_vec_y,std_vec_y):
-        #Define the node types that we calculate loss for
-        normal=torch.tensor(0)
-        outflow=torch.tensor(5)
-
-        #Get the loss mask for the nodes of the types we calculate loss for
-        loss_mask=torch.logical_or((torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(0)),
-                                   (torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(5)))
-
-        #Normalize labels with dataset statistics
-        labels = normalize(inputs.y,mean_vec_y,std_vec_y)
-
-        #Find sum of square errors
-        error=torch.sum((labels-pred)**2,axis=1)
-
-        #Root and mean the errors for the nodes we calculate loss for
-        loss=torch.sqrt(torch.mean(error[loss_mask]))
+        if self.transformation == 'attributemask' or 'none':
+            # step 3: decode latent node embeddings into physical quantities of interest
+            res = self.decoder(x)
+        else:
+            res = self.decoder(edge_attr)
         
-        return loss
+        return res
+
+
+    def loss(self, pred, inputs, mean_vec_y, std_vec_y):
+        if self.transformation == 'attributemask' or 'none': 
+            #Define the node types that we calculate loss for
+            normal=torch.tensor(0)
+            outflow=torch.tensor(5)
+
+            #Get the loss mask for the nodes of the types we calculate loss for
+            loss_mask=torch.logical_or((torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(0)),
+                                    (torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(5)))
+
+            #Normalize labels with dataset statistics
+            labels = normalize(inputs.y,mean_vec_y,std_vec_y)
+
+            #Find sum of square errors
+            error=torch.sum((labels-pred)**2,axis=1)
+
+            #Root and mean the errors for the nodes we calculate loss for
+            loss=torch.sqrt(torch.mean(error[loss_mask]))
+            return loss
+        elif self.transformation == 'edgemask':
+
+            raise Exception('Loss function for edgemask transformation is not complete yet.')
+
+            loss_fun = nn.CrossEntropyLoss()
+            print("are we here?", pred.shape)
+            return loss_fun(pred, input)
 
 
 class ProcessorLayer(MessagePassing):
