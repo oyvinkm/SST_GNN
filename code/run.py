@@ -14,12 +14,13 @@ for args in [
          'num_layers': 10,
          'batch_size': 16, 
          'hidden_dim': 10, 
-         'epochs': 500,
+         'epochs': 5,
          'opt': 'adam', 
          'opt_scheduler': 'none', 
-         'opt_restart': 0, 
+         'opt_restart': 0,
          'weight_decay': 5e-4, 
          'lr': 0.001,
+         'transformation': 'edgemask',
          'train_size': 45, 
          'test_size': 10, 
          'device':'cuda',
@@ -31,6 +32,11 @@ for args in [
     ]:
         args = objectview(args)
 
+trans_args = ['none', 'edgemask', 'attributemask']
+
+if args.transformation not in trans_args:
+    raise Exception('The transformation arg was not valid')
+
 #To ensure reproducibility the best we can, here we control the sources of
 #randomness by seeding the various random number generators used in this Colab
 #For more information, see: https://pytorch.org/docs/stable/notes/randomness.html
@@ -38,13 +44,11 @@ torch.manual_seed(5)  #Torch
 random.seed(5)        #Python
 np.random.seed(5)     #NumPy
 
+device = 'mps' if torch.backends.mps.is_available() else 'cpu'
 dataset = torch.load('data/trajectories/trajectory_0.pt')[:(args.train_size+args.test_size)]
 stats_list = get_stats(dataset)
-print(torch.backends.mps.is_available())
-print(torch.backends.mps.is_built())
 device = 'mps' if torch.backends.mps.is_available() else 'cpu'
 args.device = device
-print(device)
 test_losses, losses, velo_val_losses, best_model, best_test_loss, test_loader = train(dataset, device, stats_list, args)
 
 print("Min test set loss: {0}".format(min(test_losses)))
