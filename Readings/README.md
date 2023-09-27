@@ -31,6 +31,14 @@
 *About self supervised learning on graphs*
 * [SSL learning on graphs](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/SSL%20learning%20on%20graphs.pdf)
 
+# Multiscale Graphs:
+*Multi-Scale GNN*
+* [Multi-Scale](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Multiscale%20Graph%20Neural%20Network%20Autoencoders%20for%20Interpretable%20Scientific%20Machine%20Learning.pdf)
+
+*Bi-Stride GNN*
+* [Bi-Stride](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Bi-Stride.pdf)
+* [Code Bi-Stride](https://github.com/Eydcao/BSMS-GNN/tree/main)
+  
 ## Technical Resources:
 * [PyTorch Geometric](https://pytorch-geometric.readthedocs.io/en/latest/)
 * [Temporal Graph Benchmark](https://tgb.complexdatalab.com/)
