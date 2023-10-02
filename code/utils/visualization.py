@@ -7,6 +7,12 @@ import os
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import torch
 import copy
+from torch import Tensor
+import torch_geometric
+from torch_geometric.utils import to_networkx
+from torch_geometric.datasets import Planetoid
+import networkx as nx
+from networkx.algorithms import community
 
 def save_plots(args, losses, test_losses, velo_val_losses):
     model_name='model_nl'+str(args.num_layers)+'_bs'+str(args.batch_size) + \
@@ -129,3 +135,61 @@ def visualize(loader, best_model, file_dir, args, gif_name, stats_list,
 
     return eval_data_loader
 
+def draw_graph(g, save = False, args = None):
+  G = to_networkx(g, to_undirected=True)
+  pos = nx.spring_layout(G, seed=42)
+  cent = nx.degree_centrality(G)
+  node_size = list(map(lambda x: x * 500, cent.values()))
+  cent_array = np.array(list(cent.values()))
+  threshold = sorted(cent_array, reverse=True)[10]
+  cent_bin = np.where(cent_array >= threshold, 1, 0.1)
+  plt.figure(figsize=(12, 12))
+  nodes = nx.draw_networkx_nodes(G, pos, node_size=node_size,
+                                cmap=plt.cm.plasma,
+                                node_color=cent_bin,
+                                nodelist=list(cent.keys()),
+                                alpha=cent_bin)
+  edges = nx.draw_networkx_edges(G, pos, width=0.25, alpha=0.3)
+  if save and args is not None:
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir)
+    plt.title(f'Graph num nodes: {args.num_nodes}')
+    plt.savefig(os.path.join(args.save_dir, f'graph_{args.num_nodes}'))
+  
+  plt.show()
+
+
+def plot_mesh(gs):
+  fig, ax = plt.subplots(1, 1, figsize=(20, 16))
+  bb_min = gs.x[:, 0:2].min() # first two columns are velocity
+  bb_max = gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
+                                    # gs and prediction plots
+
+
+  ax.cla()
+  ax.set_aspect('equal')
+  ax.set_axis_off()
+
+  pos = gs.mesh_pos 
+  faces = gs.cells
+  velocity = gs.x[:, 0:2]
+
+
+  triang = mtri.Triangulation(pos[:, 0], pos[:, 1], faces)
+  mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
+  ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
+
+
+  ax.set_title('SET', fontsize = '20')
+  #ax.color
+
+  #if (count == 0):
+  divider = make_axes_locatable(ax)
+  cax = divider.append_axes('right', size='5%', pad=0.05)
+  clb = fig.colorbar(mesh_plot, cax=cax, orientation='vertical')
+  clb.ax.tick_params(labelsize=20) 
+
+  clb.ax.set_title('x velocity (m/s)',
+                      fontdict = {'fontsize': 20})
+  fig,
+  plt.show()
