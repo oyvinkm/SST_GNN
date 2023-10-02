@@ -188,12 +188,15 @@ class MeshGraphNet(torch.nn.Module):
         x, edge_index, edge_attr, pressure = data.x, data.edge_index, data.edge_attr, data.p
 
         x = normalize(x,mean_vec_x,std_vec_x)
+        
         edge_attr=normalize(edge_attr,mean_vec_edge,std_vec_edge)
 
         # Step 1: encode node/edge features into latent node/edge embeddings
         x = self.node_encoder(x) # output shape is the specified hidden dimension
 
         edge_attr = self.edge_encoder(edge_attr) # output shape is the specified hidden dimension
+
+        edge_index = self.edge_encoder(edge_index)
 
         # step 2: perform message passing with latent node/edge embeddings
         for i in range(self.num_layers):
@@ -202,9 +205,9 @@ class MeshGraphNet(torch.nn.Module):
         if self.transformation == 'attributemask' or 'none':
             # step 3: decode latent node embeddings into physical quantities of interest
             res = self.decoder(x)
-        else:
-            res = self.decoder(edge_attr)
-        
+        elif self.transformation == 'edgemask':
+            res = self.decoder(edge_index)
+
         return res
 
 
@@ -227,12 +230,9 @@ class MeshGraphNet(torch.nn.Module):
             #Root and mean the errors for the nodes we calculate loss for
             loss=torch.sqrt(torch.mean(error[loss_mask]))
             return loss
+        
         elif self.transformation == 'edgemask':
-
-            raise Exception('Loss function for edgemask transformation is not complete yet.')
-
             loss_fun = nn.CrossEntropyLoss()
-            print("are we here?", pred.shape)
             return loss_fun(pred, input)
 
 
@@ -301,7 +301,7 @@ class ProcessorLayer(MessagePassing):
 
         The messages that are passed are the raw embeddings. These are not processed.
         """
-
+        
         updated_edges=torch.cat([x_i, x_j, edge_attr], dim = 1) # tmp_emb has the shape of [E, 3 * in_channels]
         updated_edges=self.edge_mlp(updated_edges)+edge_attr
 

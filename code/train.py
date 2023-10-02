@@ -55,13 +55,15 @@ def train(dataset, device, stats_list, args):
         transform = T.Compose([
             T.NormalizeFeatures(),
             T.ToDevice(device),
-            AttributeMask(p = 0.2)
+            AttributeMask(p = 0.1)
         ])
     elif args.transformation == 'edgemask':
+        print("[!] No normalization has been made in the loss function",
+               "when using edge masking")
         transform = T.Compose([
             T.NormalizeFeatures(),
             T.ToDevice(device),
-            EdgeMask(p = 0.2)
+            EdgeMask(p = 0.1)
         ])
     elif args.transformation == 'none':
         transform = T.ToDevice(device)

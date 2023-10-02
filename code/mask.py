@@ -1,14 +1,53 @@
 import torch
 from typing import List, Optional, Union
 from torch_geometric.data import Data, HeteroData
-from torch_geometric.utils import dropout_edge, dropout_node
-import numpy as np
 from torch_geometric.data.datapipes import functional_transform
+from torch_geometric.utils import dropout_edge
 from torch_geometric.transforms import BaseTransform
+from torch import Tensor
+from typing import Optional, Tuple
+from torch_geometric.typing import OptTensor
 
-"""TODO:
-    - Implement and understand the loss functions for Edge and NodeMasking
-"""
+def filter_adj(row: Tensor, col: Tensor, edge_attr: OptTensor,
+               mask: Tensor) -> Tuple[Tensor, Tensor, OptTensor]:
+    return row[mask], col[mask], None if edge_attr is None else edge_attr[mask]
+
+def dropout_adj(
+    edge_index: Tensor,
+    edge_attr: OptTensor = None,
+    p: float = 0.5,
+    force_undirected: bool = False,
+    num_nodes: Optional[int] = None,
+    training: bool = True,
+) -> Tuple[Tensor, OptTensor]:
+    r""" Stolen shamelessly from pytorch-geometric. We don't want to use the 
+    function from their library as it will be deprecated soon."""
+    if p < 0. or p > 1.:
+        raise ValueError(f'Dropout probability has to be between 0 and 1 '
+                         f'(got {p}')
+
+    if not training or p == 0.0:
+        return edge_index, edge_attr
+
+    row, col = edge_index
+
+    mask = torch.rand(row.size(0), device=edge_index.device) >= p
+
+    if force_undirected:
+        mask[row > col] = False
+
+    row, col, edge_attr = filter_adj(row, col, edge_attr, mask)
+
+    if force_undirected:
+        edge_index = torch.stack(
+            [torch.cat([row, col], dim=0),
+             torch.cat([col, row], dim=0)], dim=0)
+        if edge_attr is not None:
+            edge_attr = torch.cat([edge_attr, edge_attr], dim=0)
+    else:
+        edge_index = torch.stack([row, col], dim=0)
+
+    return edge_index, edge_attr
 
 @functional_transform('AttributeMask')
 class AttributeMask(BaseTransform):
@@ -45,12 +84,14 @@ class EdgeMask(BaseTransform):
         self.p = p
         
     def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
-        edge_index, edge_mask = dropout_edge(dataobject.edge_index, self.p, force_undirected=True)
-        dataobject.edge_index = edge_index
+        if dataobject.edge_attr == None:
+            edge_index, _ = dropout_edge(dataobject.edge_index, self.p, force_undirected=True)
+            dataobject.edge_index = edge_index
+        else:
+            edge_index, edge_attr = dropout_adj(dataobject.edge_index, dataobject.edge_attr, self.p, force_undirected=True)
+            dataobject.edge_index = edge_index
+            dataobject.edge_attr = edge_attr
         return dataobject
-
-
-
 
 """From 
 https://pytorch-geometric.readthedocs.io/en/latest/get_started/introduction.html
