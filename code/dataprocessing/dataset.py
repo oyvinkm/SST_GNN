@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-import torch_geometric
-from torch.utils.data import IterableDataset
 import os
 import numpy as np
 import os.path as osp
-import h5py
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Dataset
 import torch
-import math
-import time
-# tra = trajectorie
+from .utils.helper_pooling import generate_multi_layer_stride
+import pickle
+
 class DatasetBase():
   def __init__(self, max_epochs=1, files=None):
     
@@ -120,19 +117,54 @@ class DatasetBase():
     g = self.datas_to_graph(datas)
     return g
   
-print(os.getcwd())
-print(os.path.pardir)
-print(os.path.join(os.path.pardir, '/data/cylinder_flow/'))
-dataset_dir = os.path.join(os.path.pardir, 'data/cylinder_flow/valid.h5')
-assert os.path.isfile(dataset_dir), '%s not exist' % dataset_dir
-file_handle = h5py.File(dataset_dir, 'r')
-keys = list(file_handle.keys())
-files = {k: file_handle[k] for k in keys}
-base = DatasetBase(files = files)
-base.check_and_close_tra()
-attrs = vars(base)
-data = next(base)
-#print(', '.join("%s: %s\n" % item for item in attrs.items()))
+class MeshDataset(Dataset):
+  def __init__(self,
+                 root_dir,
+                 instance_id,
+                 layer_num,
+                 normalize = True,
+                 recal_mesh = True):
+    self.root_dir = root_dir
+    self.instance_id = instance_id
+    self.layer_num = layer_num
+    self.normalize = normalize
+    self.recal_mesn = recal_mesh
+    self.data_file = os.path.join(self.root_dir, f'trajectories/trajectory_{str(instance_id)}.pt')
+    self.mm_dir = os.path.join(self.root_dir, 'mm_files/')
+    if not os.path.exists(self.mm_dir):
+        os.mkdir(self.mm_dir)
+    try:
+      self.traj_data = torch.load(self.data_file)
+    except:
+      FileExistsError, f'{self.data_file} does not exist'
+
+    self._cal_multi_mesh()
+
+  def len(self):
+     return len(self.traj_data)  
+  
+  def get(self, idx):
+     return self.traj_data[idx]
+     
+
+  def _cal_multi_mesh(self):
+      mmfile = os.path.join(self.mm_dir, str(self.instance_id) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
+      mmexist = os.path.isfile(mmfile)
+      if not mmexist:
+          edge_i = self.traj_data[0].edge_index
+          n = self.traj_data[0].x.shape[0]
+          m_gs, m_ids = generate_multi_layer_stride(edge_i,
+                                                    self.layer_num,
+                                                    n=n,
+                                                    pos_mesh=None)
+          m_mesh = {'m_gs': m_gs, 'm_ids': m_ids}
+          pickle.dump(m_mesh, open(mmfile, 'wb'))
+      else:
+          m_mesh = pickle.load(open(mmfile, 'rb'))
+          m_gs, m_ids = m_mesh['m_gs'], m_mesh['m_ids']
+      self.m_ids = m_ids
+      self.m_gs = m_gs
+
 
 
 
