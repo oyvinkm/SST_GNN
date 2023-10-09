@@ -199,6 +199,7 @@ def bstride_selection(flat_edge, n_nodes, pos_mesh = None):
 
     return combined_idx_kept, adj_mat
 
+
 def generate_multi_layer_stride(flat_edge, num_l, n, pos_mesh = None):
     m_gs = [flat_edge]
     m_ids = []
@@ -212,7 +213,8 @@ def generate_multi_layer_stride(flat_edge, num_l, n, pos_mesh = None):
 
     return m_gs, m_ids
 
-def _cal_multi_mesh(fields, cells, args):
+# Used in dataset class
+""" def _cal_multi_mesh(fields, cells, args):
     mm_dir = os.path.join(args.data_dir, '/mm_files/')
     mmfile = os.path.join(mm_dir, str(args.instance_id) + '_mmesh_layer_' + str(args.layer_num) + '.dat')
     mmexist = os.path.isfile(mmfile)
@@ -227,4 +229,4 @@ def _cal_multi_mesh(fields, cells, args):
     else:
         m_mesh = pickle.load(open(mmfile, 'rb'))
         m_gs, m_ids = m_mesh['m_gs'], m_mesh['m_ids']
-    return m_gs, m_ids
+    return m_gs, m_ids """
