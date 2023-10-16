@@ -159,7 +159,7 @@ def draw_graph(g, save = False, args = None):
   plt.show()
 
 
-def plot_mesh(gs):
+def plot_mesh(gs, args):
   fig, ax = plt.subplots(1, 1, figsize=(20, 16))
   bb_min = gs.x[:, 0:2].min() # first two columns are velocity
   bb_max = gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
@@ -170,13 +170,13 @@ def plot_mesh(gs):
   ax.set_aspect('equal')
   ax.set_axis_off()
 
-  pos = gs.mesh_pos 
-  faces = gs.cells
+  pos = gs.mesh_pos.to(args.device)
+  faces = gs.cells.to(args.device)
   velocity = gs.x[:, 0:2]
 
 
-  triang = mtri.Triangulation(pos[:, 0], pos[:, 1], faces)
-  mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
+  triang = mtri.Triangulation(pos[:, 0].cpu(), pos[:, 1].cpu(), faces.cpu())
+  mesh_plot = ax.tripcolor(triang, velocity[:, 0].cpu(), vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
   ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
 
 
