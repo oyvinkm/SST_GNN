@@ -1,16 +1,7 @@
-# %% [markdown]
-# # SETUP
-
-# %%
 import torch
 print("CUDA is available:", torch.cuda.is_available())
 print("CUDA has version:", torch.version.cuda)
 
-
-# %% [markdown]
-# ## Multiscale Graph Neural Network
-
-# %%
 import torch
 import torch_scatter
 import torch.nn as nn
@@ -22,8 +13,6 @@ from torch_geometric.nn.unpool import knn_interpolate
 from torch_scatter import scatter
 from torch.nn import MSELoss as MSE
 from torch_geometric.utils import degree
-
-# %%
 
 class ProcessorLayer(MessagePassing):
     def __init__(self, in_channels, out_channels,  **kwargs):
@@ -154,7 +143,6 @@ class GCNConv(MessagePassing):
         # Step 5: Return new node embeddings.
         return aggr_out
 
-# %%
 class MessagePassingBlock(torch.nn.Module):
     def __init__(self, hidden_dim,  args, num_layers = None, emb=False):
         super(MessagePassingBlock, self).__init__()
@@ -224,8 +212,6 @@ class WeightedEdgeConv(MessagePassing):
         ec = w_to_send / aggr_w[j]
         return ec, aggr_w
 
-# %%
-
 class MessagePassingLayer(torch.nn.Module):
     def __init__(self, input_dim_node,hidden_dim, l_n, latent_dim, args):
         super(MessagePassingLayer, self).__init__()
@@ -294,7 +280,7 @@ class MessagePassingLayer(torch.nn.Module):
             h = h.add(down_outs[up_idx])
         return h
 
-# %%
+
 class MultiScaleAutoEncoder(nn.Module):
     def __init__(self, 
                  input_dim_node, 
@@ -403,12 +389,6 @@ class MultiScaleAutoEncoder(nn.Module):
 
         return x#, edge_attr, edge_index
         
-        
-
-# %% [markdown]
-# # TRAIN
-
-# %%
 import random
 import numpy as np
 import torch.optim as optim
@@ -417,7 +397,7 @@ from tqdm import trange
 from torch_geometric.loader import DataLoader
 from dataprocessing.dataset import MeshDataset
 
-# %%
+
 class objectview(object):
     def __init__(self, d):
         self.__dict__ = d
@@ -451,7 +431,7 @@ torch.manual_seed(5)  #Torch
 random.seed(5)        #Python
 np.random.seed(5)     #NumPy
 
-# %%
+
 def build_optimizer(args, params):
     weight_decay = args.weight_decay
     filter_fn = filter(lambda p : p.requires_grad, params)
@@ -471,15 +451,12 @@ def build_optimizer(args, params):
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.opt_restart)
     return scheduler, optimizer
 
-# %%
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 args.device = device
 
-# %%
 dataset = MeshDataset(root_dir = 'data/cylinder_flow/', instance_id=1, layer_num=5)
 input_dim_node, input_dim_edge = dataset[0].num_features, dataset[0].edge_attr.shape[1]
 
-# %%
 def MSEloss(pred, inputs, mean_vec_x, std_vec_x):
   #Define the node types that we calculate loss for
   normal=torch.tensor(0)
@@ -499,7 +476,7 @@ def MSEloss(pred, inputs, mean_vec_x, std_vec_x):
   loss=torch.sqrt(torch.mean(error[loss_mask]))
   return loss
 
-# %%
+
 h = 11
 num_layers = 1
 model = MultiScaleAutoEncoder(input_dim_node, 
@@ -521,7 +498,6 @@ loader = DataLoader(dataset, batch_size = 1, shuffle=args.shuffle)
 model = model.to(device)
 
 
-# %%
 from matplotlib import pyplot as plt 
 from utils.visualization import plot_mesh
 
@@ -553,16 +529,13 @@ for epoch in trange(args.epochs, desc="Training", unit="Epochs"):
         with torch.no_grad():
             plot_mesh(plot_g, args)
 
-# %%
+
+
 from matplotlib import pyplot as plt 
 from utils.visualization import plot_mesh
 plt.plot(losses)
 
-# %% [markdown]
-# # PLOTS
-# 
 
-# %%
 import os
 import collections
 import numpy as np
@@ -585,7 +558,6 @@ from torchmetrics import Accuracy, AveragePrecision, Dice
 from utils.visualization import plot_mesh
 
 
-# %%
 samp = next(iter(loader))
 pred = model(samp, m_ids, m_gs)
 graph = samp[0]
@@ -593,10 +565,6 @@ graph.x[:, 0:2] = pred[0]
 plot_mesh(graph)
 
 
-# %% [markdown]
-# ## Make Predictions
-
-# %%
 G = to_networkx(dataset[0], to_undirected=True)
 pos = nx.spring_layout(G, seed=42)
 cent = nx.degree_centrality(G)
@@ -614,19 +582,11 @@ nodes = nx.draw_networkx_nodes(G, pos, node_size=node_size,
 edges = nx.draw_networkx_edges(G, pos, width=0.25, alpha=0.3)
 plt.show()
 
-# %%
 print(dataset[0].edge_index)
 
-# %%
 from utils.visualization import make_animation
 loader = DataLoader(dataset, batch_size = 1)
 print(len(loader))
 make_animation(dataset, 'delete_me', '', save_anim=True, plot_variables=False)
 
-# %%
 import pickle
-
-# %%
-
-
-
