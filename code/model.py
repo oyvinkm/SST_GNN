@@ -1,322 +1,349 @@
 import torch
-import torch_scatter
-import torch.nn as nn
-from torch.nn import Linear, Sequential, LayerNorm, ReLU
-from torch_geometric.nn.conv import MessagePassing
-from torch.nn import CrossEntropyLoss
-from torch_geometric.data import DataLoader
-from dataprocessing.utils.normalization import normalize, get_stats
-from torch_geometric.nn import GAE, VGAE, GCNConv
+from torch import nn
+from torch.nn import LayerNorm, Linear, ReLU, Sequential
+from torch_geometric.nn.conv import GraphConv, MessagePassing
+from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
+from torch_geometric.utils import degree
+from torch_scatter import scatter
 
 
-
-class VariationalGCNEncoder(torch.nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.conv1 = GCNConv(in_channels, 2 * out_channels)
-        self.conv_mu = GCNConv(2 * out_channels, out_channels)
-        self.conv_logstd = GCNConv(2 * out_channels, out_channels)
-
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index).relu()
-        # Mu is the difference between the GCNE and the VGCNE
-        return self.conv_mu(x, edge_index), self.conv_logstd(x, edge_index)
-
-class GCNEncoder(torch.nn.Module):
-    def __init__(self, input_dim_node, hidden_dim, latent_dim, args):
-        super(GCNEncoder, self).__init__()
-        self.conv1 = GCNConv(input_dim_node, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, latent_dim)
-        self.relu = ReLU()
-        
-
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index)
-        x = self.relu(x)
-        # Mu is the difference between the GCNE and the VGCNE
-        return self.conv2(x, edge_index)
-
-class GCNDecoder(torch.nn.Module):
-    def __init__(self, latent_dim, hidden_dim, output_dim, args):
-        super(GCNDecoder, self).__init__()
-        self.conv1 = GCNConv(latent_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, output_dim)
-        self.relu = ReLU()
-    def forward(self, x, edge_index): 
-        x = self.conv1(x, edge_index)
-        x = self.relu(x)
-        return self.conv2(x, edge_index)
-
-class GCNAutoEncoder(torch.nn.Module):
-    def __init__(self, input_dim_node, hidden_dim, latent_dim, output_dim, args):
-        super(GCNAutoEncoder, self).__init__()
-
-        self.node_encoder = GCNEncoder(input_dim_node, hidden_dim, latent_dim, args)
-        self.node_decoder = GCNDecoder(5, hidden_dim, output_dim, args)
-        self.edge_decoder = None
-        self.mlp = Sequential(ReLU(), 
-                              Linear(latent_dim, 5),
-                              LayerNorm(5))
-        
-    def forward(self, x, edge_index):
-        x = self.node_encoder(x, edge_index)
-        z = self.mlp(x)
-        if self.edge_decoder is not None:
-            e_x = self.edge_decoder(x, edge_index)
-            return e_x
+class MultiScaleAutoEncoder(nn.Module):
+    def __init__(self, args):
+        super(MultiScaleAutoEncoder, self).__init__()
+        self.in_dim_node = args.in_dim_node
+        self.in_dim_edge = args.in_dim_edge
+        if args.out_feature_dim is None:
+            self.out_feature_dim = args.in_dim_node
         else:
-            n_x = self.node_decoder(z, edge_index)
-            return n_x
-            
+            self.out_feature_dim = args.out_feature_dim
+        self.hidden_dim = args.hidden_dim
+        self.ae_layers = args.ae_layers
+        if args.ae_ratio is None:
+            self.ratio = 0.5
+        else:
+            self.ratio = args.ae_ratio
+        if args.latent_dim is None:
+            self.latent_dim = args.hidden_dim
+        else:
+            self.latent_dim = args.latent_dim
+        self.args = args
+        self.down_layers = nn.ModuleList()
+        self.up_layers = nn.ModuleList()
+        self.down_pool = nn.ModuleList()
+        self.up_pool = nn.ModuleList()
+
+        for _ in range(self.ae_layers):
+            self.down_layers.append(MessagePassingLayer(args=self.args))
+            self.up_layers.append(MessagePassingLayer(args=self.args))
+            self.down_pool.append(TopKPooling(self.hidden_dim, self.ratio))
+            self.up_pool.append(Unpool())
+
+        self.bottom_layer = MessagePassingLayer(args=self.args)
+
+        self.final_layer = MessagePassingLayer(args=self.args)
+
+        self.node_encoder = Sequential(
+            Linear(self.in_dim_node, self.hidden_dim),
+            ReLU(),
+            Linear(self.hidden_dim, self.latent_dim),
+            LayerNorm(self.latent_dim),
+        )
+        self.out_node_decoder = Sequential(
+            Linear(self.latent_dim, self.latent_dim // 2),
+            ReLU(),
+            Linear(self.latent_dim // 2, self.out_feature_dim),
+            LayerNorm(self.out_feature_dim),
+        )
+
+        self.edge_encoder = Sequential(
+            Linear(self.in_dim_edge, self.hidden_dim),
+            ReLU(),
+            Linear(self.hidden_dim, self.hidden_dim),
+            LayerNorm(self.hidden_dim),
+        )
+
+    def forward(self, b_data):
+        x = b_data.x
+        edge_attr = b_data.edge_attr
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+        in_edge_attr = b_data.edge_attr
+        down_gs = []
+        down_outs = []
+        perms = []
+        ws = []
+        bs = []
+        b_data.x = x
+        b_data.edge_attr = edge_attr
+        for i in range(self.ae_layers):
+            b_data = self.down_layers[i](b_data)
+            batch = b_data.batch
+            ws.append(b_data.weights)
+            bs.append(batch)
+
+            down_outs.append(b_data.x)
+            down_gs.append(b_data.edge_index)
+            x, edge_index, edge_attr, batch, perm, _ = self.down_pool[i](
+                b_data.x, b_data.edge_index, b_data.edge_attr, batch
+            )
+            b_data.x = x
+            b_data.edge_index = edge_index
+            b_data.edge_attr = edge_attr
+            b_data.batch = batch
+            b_data.weights = b_data.weights[perm]
+            perms.append(perm)
+
+        # Do the final MMP before we arrive at G_L
+        b_data = self.bottom_layer(b_data)
+        z = b_data.clone()
+        for i in range(self.ae_layers):
+            up_idx = self.ae_layers - i - 1
+            x = self.up_layers[i](b_data)
+            x = self.up_pool[i](
+                b_data.x,
+                down_outs[up_idx].shape[0],
+                perms[up_idx])
+            b_data.weights = ws[up_idx]
+            b_data.batch = bs[up_idx]
+            b_data.x = x
+            b_data.edge_index = down_gs[up_idx]
+
+        x = self.final_layer(b_data)
+        x = self.out_node_decoder(b_data.x)
+        b_data.x = x
+        b_data.edge_attr = in_edge_attr
+
+        return b_data, z  # , edge_attr, edge_index
 
 
-class AutoEncoder(torch.nn.Module):
-    def __init__(self, input_dim_node, hidden_dim, output_dim, args, emb = False):
-        super(AutoEncoder, self).__init__()
+class MessagePassingLayer(torch.nn.Module):
+    def __init__(self, args):
+        super(MessagePassingLayer, self).__init__()
+        self.hidden_dim = args.hidden_dim
+        self.l_n = args.mpl_layers
+        self.args = args
+        if args.latent_dim is None:
+            self.latent_dim = args.hidden_dim
+        else:
+            self.latent_dim = args.latent_dim
+        self.num_blocks = args.num_blocks
+        self.down_gmps = nn.ModuleList()
+        self.up_gmps = nn.ModuleList()
+        self.unpools = nn.ModuleList()
+        self.bottom_gmp = MessagePassingBlock(
+            hidden_dim=self.latent_dim, args=args)
+        self.edge_conv = WeightedEdgeConv()
+        self.pools = nn.ModuleList()
+        if self.args.mpl_ratio is None:
+            self.ratio = 0.5
+        else:
+            self.ratio = self.args.mpl_ratio
 
-        self.num_layers = args.num_layers
-         # encoder convert raw inputs into latent embeddings
-        self.node_encoder = Sequential(Linear(input_dim_node , hidden_dim),
-                              ReLU(),
-                              Linear( hidden_dim, hidden_dim),
-                              LayerNorm(hidden_dim))
-        
-        self.decoder = Sequential(Linear( hidden_dim , hidden_dim),
-                              ReLU(),
-                              Linear( hidden_dim, output_dim)
-                              )
-        
-    def forward(self,data,mean_vec_x,std_vec_x):
-        """
-        Encoder encodes graph (node/edge features) into latent vectors (node/edge embeddings)
-        The return of processor is fed into the processor for generating new feature vectors
-        """
-        x = data.x
+        for _ in range(self.l_n):
+            self.down_gmps.append(
+                MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
+            )
+            self.up_gmps.append(
+                MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
+            )
+            self.unpools.append(Unpool())
+            if self.args.pool_strat == "ASA":
+                self.pools.append(
+                    ASAPooling(
+                        in_channels=self.latent_dim,
+                        ratio=self.ratio,
+                        GNN=GraphConv))
+            else:
+                self.pools.append(
+                    TopKPooling(
+                        self.hidden_dim,
+                        self.args.ratio))
 
-        x = normalize(x,mean_vec_x,std_vec_x)
-        #edge_attr=normalize(edge_attr,mean_vec_edge,std_vec_edge)
+    def forward(self, b_data):
+        down_outs = []
+        cts = []
+        down_masks = []
+        down_gs = []
+        batches = []
+        ws = []
+        b_data.edge_weight = None
+        edge_attr = b_data.edge_attr
 
-        # Step 1: encode node/edge features into latent node/edge embeddings
-        x = self.node_encoder(x) # output shape is the specified hidden dimension
+        for i in range(self.l_n):
+            h = b_data.x
+            g = b_data.edge_index
+            b_data.x = self.down_gmps[i](h, g)
+            # record the infor before aggregation
+            down_outs.append(h)
+            down_gs.append(g)
+            batches.append(b_data.batch)
+            ws.append(b_data.weights)
 
-        #edge_attr = self.edge_encoder(edge_attr) # output shape is the specified hidden dimension
+            # aggregate then pooling
+            # Calculates edge and node weigths
+            ew, w = self.edge_conv.cal_ew(b_data.weights, g)
+            b_data.weights = w
+            # Does edge convolution on nodes with edge weigths
+            b_data.x = self.edge_conv(h, g, ew)
+            # Does edge convolution on position with edge weights
+            cts.append(ew)
+            if self.args.pool_strat == "ASA":
+                x, edge_index, edge_weight, batch, index = self.pools[i](
+                    b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch)
+                down_masks.append(index)
+                b_data.x = x
+                b_data.edge_index = edge_index
+                b_data.edge_weight = edge_weight
+                b_data.batch = batch
+                b_data.weights = b_data.weights[index]
+            else:
+                x, edge_index, edge_weight, batch, index, _ = self.pools[i](
+                    b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch
+                )
+                down_masks.append(index)
+                b_data.x = x
+                b_data.edge_index = edge_index
+                b_data.edge_weight = edge_weight
+                b_data.batch = batch
+                b_data.weights = b_data.weights[index]
 
-        # step 2: perform message passing with latent node/edge embeddings
-        #for i in range(self.num_layers):
-        #    x,edge_attr = self.processor[i](x,edge_index,edge_attr)
+        b_data.x = self.bottom_gmp(b_data.x, b_data.edge_index)
+        for i in range(self.l_n):
+            up_idx = self.l_n - i - 1
+            h = self.unpools[i](
+                b_data.x, down_outs[up_idx].shape[0], down_masks[up_idx]
+            )
+            tmp_g = down_gs[up_idx]
+            h = self.edge_conv(h, tmp_g, cts[up_idx], aggragating=False)
+            h = self.up_gmps[i](h, g)
+            h = h.add(down_outs[up_idx])
+            b_data.x = h
+            b_data.edge_index = tmp_g
+            b_data.batch = batches[up_idx]
+            b_data.weights = ws[up_idx]
+        b_data.edge_attr = edge_attr
+        return b_data
 
-        # step 3: decode latent node embeddings into physical quantities of interest
+    def _pooling_strategy(self):
+        if self.args.pool_strat == "ASA":
+            pool = ASAPooling
+        elif self.args.pool_strat == "SAG":
+            pool = SAGPooling
+        else:
+            pool = TopKPooling
+        return pool
 
-        return self.decoder(x)
-    
-    def loss(self, pred, inputs,mean_vec_y,std_vec_y):
-        #Define the node types that we calculate loss for
-        normal=torch.tensor(0)
-        outflow=torch.tensor(5)
 
-        #Get the loss mask for the nodes of the types we calculate loss for
-        loss_mask=torch.logical_or((torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(0)),
-                                   (torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(5)))
+class WeightedEdgeConv(MessagePassing):
+    def __init__(self):
+        super().__init__(aggr="add", flow="target_to_source")
 
-        #Normalize labels with dataset statistics
-        labels = normalize(inputs.y,mean_vec_y,std_vec_y)
+    def forward(self, x, g, ew, aggragating=True):
+        # aggregating: False means returning
+        i = g[0]
+        j = g[1]
+        if len(x.shape) == 3:
+            weighted_info = x[:, i] if aggragating else x[:, j]
+        elif len(x.shape) == 2:
+            weighted_info = x[i] if aggragating else x[j]
+        else:
+            raise NotImplementedError("Only implemented for dim 2 and 3")
+        weighted_info *= ew.unsqueeze(-1)
+        target_index = j if aggragating else i
+        aggr_out = scatter(weighted_info, target_index,
+                           dim=-2, dim_size=x.shape[-2], reduce="sum")
+        return aggr_out
 
-        #Find sum of square errors
-        error=torch.sum((labels-pred)**2,axis=1)
+    @torch.no_grad()
+    def cal_ew(self, w, g):
+        deg = degree(g[0], dtype=torch.float, num_nodes=w.shape[0])
+        normed_w = w.squeeze(-1) / deg
+        i = g[0]
+        j = g[1]
+        w_to_send = normed_w[i]
+        eps = 1e-12
+        aggr_w = (
+            scatter(
+                w_to_send,
+                j,
+                dim=-
+                1,
+                dim_size=normed_w.size(0),
+                reduce="sum") +
+            eps)
+        ec = w_to_send / aggr_w[j]
+        return ec, aggr_w
 
-        #Root and mean the errors for the nodes we calculate loss for
-        loss=torch.sqrt(torch.mean(error[loss_mask]))
-        
-        return loss
 
-class MeshGraphNet(torch.nn.Module):
-    def __init__(self, input_dim_node, input_dim_edge, hidden_dim, output_dim, args, emb=False):
-        super(MeshGraphNet, self).__init__()
-        """
-        MeshGraphNet model. This model is built upon Deepmind's 2021 paper.
-        This model consists of three parts: (1) Preprocessing: encoder (2) Processor
-        (3) postproccessing: decoder. Encoder has an edge and node decoders respectively.
-        Processor has two processors for edge and node respectively. Note that edge attributes have to be
-        updated first. Decoder is only for nodes.
-
-        Input_dim: dynamic variables + node_type + node_position
-        Hidden_dim: 128 in deepmind's paper
-        Output_dim: dynamic variables: velocity changes (1)
-
-        """
-
-        self.transformation = args.transformation
-
-        self.num_layers = args.num_layers
-
-        # encoder convert raw inputs into latent embeddings
-        self.node_encoder = Sequential(Linear(input_dim_node, hidden_dim),
-                              ReLU(),
-                              Linear(hidden_dim, hidden_dim),
-                              LayerNorm(hidden_dim))
-
-        self.edge_encoder = Sequential(Linear(input_dim_edge, hidden_dim),
-                              ReLU(),
-                              Linear(hidden_dim, hidden_dim),
-                              LayerNorm(hidden_dim))
-
+class MessagePassingBlock(torch.nn.Module):
+    def __init__(self, hidden_dim, args, num_blocks=None, emb=False):
+        super(MessagePassingBlock, self).__init__()
+        if num_blocks is None:
+            self.num_blocks = args.num_blocks
+        else:
+            self.num_blocks = num_blocks
 
         self.processor = nn.ModuleList()
-        assert (self.num_layers >= 1), 'Number of message passing layers is not >=1'
+        assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
 
-        processor_layer=self.build_processor_model()
-        for _ in range(self.num_layers):
-            self.processor.append(processor_layer(hidden_dim,hidden_dim))
+        processor_layer = self.build_processor_model()
+        for _ in range(self.num_blocks):
+            self.processor.append(processor_layer(hidden_dim, hidden_dim))
 
-
-        # decoder: only for node embeddings
-        self.decoder = Sequential(Linear( hidden_dim , hidden_dim),
-                              ReLU(),
-                              Linear( hidden_dim, output_dim)
-                              )
-
-        
     def build_processor_model(self):
-        return ProcessorLayer
+        return GCNConv
 
-
-    def forward(self,data,mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge):
-        """
-        Encoder encodes graph (node/edge features) into latent vectors (node/edge embeddings)
-        The return of processor is fed into the processor for generating new feature vectors
-        """
-        x, edge_index, edge_attr, pressure = data.x, data.edge_index, data.edge_attr, data.p
-
-        x = normalize(x,mean_vec_x,std_vec_x)
-        
-        edge_attr=normalize(edge_attr,mean_vec_edge,std_vec_edge)
-
+    def forward(self, x, edge_index):
         # Step 1: encode node/edge features into latent node/edge embeddings
-        x = self.node_encoder(x) # output shape is the specified hidden dimension
-
-        edge_attr = self.edge_encoder(edge_attr) # output shape is the specified hidden dimension
-
-        edge_index = self.edge_encoder(edge_index)
-
         # step 2: perform message passing with latent node/edge embeddings
-        for i in range(self.num_layers):
-            x,edge_attr = self.processor[i](x,edge_index,edge_attr)
-
-        if self.transformation == 'attributemask' or 'none':
-            # step 3: decode latent node embeddings into physical quantities of interest
-            res = self.decoder(x)
-        elif self.transformation == 'edgemask':
-            res = self.decoder(edge_index)
-
-        return res
+        for i in range(self.num_blocks):
+            x = self.processor[i](x, edge_index)
+        return x
 
 
-    def loss(self, pred, inputs, mean_vec_y, std_vec_y):
-        if self.transformation == 'attributemask' or 'none': 
-            #Define the node types that we calculate loss for
-            normal=torch.tensor(0)
-            outflow=torch.tensor(5)
+class Unpool(nn.Module):
+    def __init__(self, *args):
+        super(Unpool, self).__init__()
 
-            #Get the loss mask for the nodes of the types we calculate loss for
-            loss_mask=torch.logical_or((torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(0)),
-                                    (torch.argmax(inputs.x[:,2:],dim=1)==torch.tensor(5)))
-
-            #Normalize labels with dataset statistics
-            labels = normalize(inputs.y,mean_vec_y,std_vec_y)
-
-            #Find sum of square errors
-            error=torch.sum((labels-pred)**2,axis=1)
-
-            #Root and mean the errors for the nodes we calculate loss for
-            loss=torch.sqrt(torch.mean(error[loss_mask]))
-            return loss
-        
-        elif self.transformation == 'edgemask':
-            loss_fun = nn.CrossEntropyLoss()
-            return loss_fun(pred, input)
+    def forward(self, h, pre_node_num, idx):
+        new_h = h.new_zeros([pre_node_num, h.shape[-1]])
+        new_h[idx] = h
+        return new_h
 
 
-class ProcessorLayer(MessagePassing):
-    def __init__(self, in_channels, out_channels,  **kwargs):
-        super(ProcessorLayer, self).__init__(  **kwargs )
-        """
-        in_channels: dim of node embeddings [128], out_channels: dim of edge embeddings [128]
+class GCNConv(MessagePassing):
+    def __init__(self, in_channels, out_channels):
+        super(GCNConv, self).__init__(aggr="add")  # "Add" aggregation.
+        self.lin = torch.nn.Linear(in_channels, out_channels)
 
-        """
+    def forward(self, x, edge_index):
+        if not isinstance(edge_index, torch.Tensor):
+            edge_index = torch.tensor(edge_index)
+        # x has shape [num_nodes, in_channels]
+        # edge_index has shape [2, E]
 
-        # Note that the node and edge encoders both have the same hidden dimension
-        # size. This means that the input of the edge processor will always be
-        # three times the specified hidden dimension
-        # (input: adjacent node embeddings and self embeddings)
-        self.edge_mlp = Sequential(Linear( 3* in_channels , out_channels),
-                                   ReLU(),
-                                   Linear( out_channels, out_channels),
-                                   LayerNorm(out_channels))
+        # Step 1: Add self-loops to the adjacency matrix.
+        # edge_index = add_self_loops(edge_index, num_nodes=x.size(0))
+        # print(edge_index[0].shape)
+        # Step 2: Linearly transform node feature matrix.
+        x = self.lin(x)
 
-        self.node_mlp = Sequential(Linear( 2* in_channels , out_channels),
-                                   ReLU(),
-                                   Linear( out_channels, out_channels),
-                                   LayerNorm(out_channels))
+        # Step 3-5: Start propagating messages.
+        return self.propagate(edge_index, size=(x.size(0), x.size(0)), x=x)
 
+    def message(self, x_j, edge_index, size):
+        # x_j has shape [num_edges, out_channels]
 
-        self.reset_parameters()
+        # Step 3: Normalize node features.
+        row, col = edge_index
+        deg = degree(row, size[0], dtype=x_j.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
 
-    def reset_parameters(self):
-        """
-        reset parameters for stacked MLP layers
-        """
-        self.edge_mlp[0].reset_parameters()
-        self.edge_mlp[2].reset_parameters()
+        return norm.view(-1, 1) * x_j
 
-        self.node_mlp[0].reset_parameters()
-        self.node_mlp[2].reset_parameters()
+    def update(self, aggr_out):
+        # aggr_out has shape [num_nodes, out_channels]
 
-    def forward(self, x, edge_index, edge_attr, size = None):
-        """
-        Handle the pre and post-processing of node features/embeddings,
-        as well as initiates message passing by calling the propagate function.
-
-        Note that message passing and aggregation are handled by the propagate
-        function, and the update
-
-        x has shpae [node_num , in_channels] (node embeddings)
-        edge_index: [2, edge_num]
-        edge_attr: [E, in_channels]
-
-        """
-
-        out, updated_edges = self.propagate(edge_index, x = x, edge_attr = edge_attr, size = size) # out has the shape of [E, out_channels]
-
-        updated_nodes = torch.cat([x,out],dim=1)        # Complete the aggregation through self-aggregation
-
-        updated_nodes = x + self.node_mlp(updated_nodes) # residual connection
-
-        return updated_nodes, updated_edges
-
-    def message(self, x_i, x_j, edge_attr):
-        """
-        source_node: x_i has the shape of [E, in_channels]
-        target_node: x_j has the shape of [E, in_channels]
-        target_edge: edge_attr has the shape of [E, out_channels]
-
-        The messages that are passed are the raw embeddings. These are not processed.
-        """
-        
-        updated_edges=torch.cat([x_i, x_j, edge_attr], dim = 1) # tmp_emb has the shape of [E, 3 * in_channels]
-        updated_edges=self.edge_mlp(updated_edges)+edge_attr
-
-        return updated_edges
-
-    def aggregate(self, updated_edges, edge_index, dim_size = None):
-        """
-        First we aggregate from neighbors (i.e., adjacent nodes) through concatenation,
-        then we aggregate self message (from the edge itself). This is streamlined
-        into one operation here.
-        """
-
-        # The axis along which to index number of nodes.
-        node_dim = 0
-
-        out = torch_scatter.scatter(updated_edges, edge_index[0, :], dim=node_dim, reduce = 'sum')
-
-        return out, updated_edges
+        # Step 5: Return new node embeddings.
+        return aggr_out
