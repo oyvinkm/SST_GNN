@@ -158,7 +158,7 @@ def draw_graph(g, save = False, args = None):
   
   plt.show()
 
-
+@torch.no_grad()
 def plot_mesh(gs, args):
   fig, ax = plt.subplots(1, 1, figsize=(20, 16))
   bb_min = gs.x[:, 0:2].min() # first two columns are velocity
@@ -170,8 +170,8 @@ def plot_mesh(gs, args):
   ax.set_aspect('equal')
   ax.set_axis_off()
 
-  pos = gs.mesh_pos.to(args.device)
-  faces = gs.cells.to(args.device)
+  pos = gs.mesh_pos
+  faces = gs.cells
   velocity = gs.x[:, 0:2]
 
 
@@ -192,4 +192,4 @@ def plot_mesh(gs, args):
   clb.ax.set_title('x velocity (m/s)',
                       fontdict = {'fontsize': 20})
   fig,
-  plt.show()
+  return fig

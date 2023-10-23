@@ -1,169 +1,162 @@
-from model import MeshGraphNet, AutoEncoder
 import torch
-from torch_geometric.loader import DataLoader
-import torch.optim as optim
 from tqdm import trange
-import torch_geometric.transforms as T
-import pandas as pd
 import copy
+from torch.nn import MSELoss
 from mask import AttributeMask, EdgeMask
 from dataprocessing.utils.normalization import get_stats, normalize, unnormalize
+from torch_geometric.data import Batch
 import numpy as np
 import os
+from datetime import datetime
+from loguru import logger
+import json
 
 
-def build_optimizer(args, params):
-    weight_decay = args.weight_decay
-    filter_fn = filter(lambda p : p.requires_grad, params)
-    if args.opt == 'adam':
-        optimizer = optim.Adam(filter_fn, lr=args.lr, weight_decay=weight_decay)
-    elif args.opt == 'sgd':
-        optimizer = optim.SGD(filter_fn, lr=args.lr, momentum=0.95, weight_decay=weight_decay)
-    elif args.opt == 'rmsprop':
-        optimizer = optim.RMSprop(filter_fn, lr=args.lr, weight_decay=weight_decay)
-    elif args.opt == 'adagrad':
-        optimizer = optim.Adagrad(filter_fn, lr=args.lr, weight_decay=weight_decay)
-    if args.opt_scheduler == 'none':
-        return None, optimizer
-    elif args.opt_scheduler == 'step':
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.opt_decay_step, gamma=args.opt_decay_rate)
-    elif args.opt_scheduler == 'cos':
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.opt_restart)
-    return scheduler, optimizer
+# datetime object containing current date and time
+
+def save_model(best_model, model_name, args):
+    if not os.path.isdir( args.save_model_dir):
+        os.mkdir(args.save_model_dir)
+    PATH = os.path.join(args.save_model_dir, model_name+'.pt')
+    torch.save(best_model.state_dict(), PATH)
+
+def save_args(args_name, args):
+    if not os.path.isdir(args.save_args_dir):
+        os.mkdir(args.save_args_dir)
+    PATH = os.path.join(args.save_args_dir, args_name+'.txt')
+    with open(PATH, 'w') as f:
+         for key, value in args.__dict__.items():  
+            f.write('%s: %s\n' % (key, value))
+@torch.no_grad()
+def validate(model, val_loader, loss_func, args):
+    total_loss = 0
+    model.train()
+    for idx, batch in enumerate(val_loader):
+        # data = transform(batch).to(args.device)
+        #Note that normalization must be done before it's called. The unnormalized
+        #data needs to be preserved in order to correctly calculate the loss
+        b_lst = batch.to_data_list()
+        tmp = []
+        for b in b_lst:
+            w = b.x.new_ones(b.x.shape[0], 1)
+            b.weights = w
+            tmp.append(b)
+        batch = Batch.from_data_list(tmp)
+        batch=batch.to(args.device)
+        pred, z = model(batch)
+        loss = loss_func(pred.x, batch.x)
+        total_loss += loss.item()
+
+    total_loss /= idx
+    return total_loss
 
 
-def train(dataset, device, stats_list, args):
+@torch.no_grad()
+def test(model, test_loader, loss_func, args):
+    if loss_func is None:
+        loss_func = MSELoss()
+    total_loss = 0
+    model.train()
+    for idx, batch in enumerate(test_loader):
+        # data = transform(batch).to(args.device)
+        #Note that normalization must be done before it's called. The unnormalized
+        #data needs to be preserved in order to correctly calculate the loss
+        b_lst = batch.to_data_list()
+        tmp = []
+        for b in b_lst:
+            w = b.x.new_ones(b.x.shape[0], 1)
+            b.weights = w
+            tmp.append(b)
+        batch = Batch.from_data_list(tmp)
+        batch=batch.to(args.device)
+        pred, z = model(batch)
+        loss = loss_func(pred.x, batch.x)
+        total_loss += loss.item()
 
+    total_loss /= idx
+    return total_loss
+
+def train(model, train_loader, val_loader, optimizer, args):
+
+    model = model.to(args.device)
     '''
     Performs a training loop on the dataset for MeshGraphNets. Also calls
     test and validation functions.
     '''
-
-    df = pd.DataFrame(columns=['epoch','train_loss','test_loss', 'velo_val_loss'])
-
-    #Define the model name for saving 
-    model_name='model_nl'+str(args.num_layers)+'_bs'+str(args.batch_size) + \
-               '_hd'+str(args.hidden_dim)+'_ep'+str(args.epochs)+'_wd'+str(args.weight_decay) + \
-               '_lr'+str(args.lr)+'_shuff_'+str(args.shuffle)+'_tr'+str(args.train_size)+'_te'+str(args.test_size)
-
-    #torch_geometric DataLoaders are used for handling the data of lists of graphs
-    loader = DataLoader(dataset[:args.train_size], batch_size=args.batch_size, shuffle=False)
-    test_loader = DataLoader(dataset[args.train_size:], batch_size=args.batch_size, shuffle=False)
-
-    # Set the transformation
-    if args.transformation == 'attributemask':
-        transform = T.Compose([
-            T.NormalizeFeatures(),
-            T.ToDevice(device),
-            AttributeMask(p = 0.1)
-        ])
-    elif args.transformation == 'edgemask':
-        print("[!] No normalization has been made in the loss function",
-               "when using edge masking")
-        transform = T.Compose([
-            T.NormalizeFeatures(),
-            T.ToDevice(device),
-            EdgeMask(p = 0.1)
-        ])
-    elif args.transformation == 'none':
-        transform = T.ToDevice(device)
-
-    #The statistics of the data are decomposed
-    [mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge,mean_vec_y,std_vec_y] = stats_list
-    (mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge,mean_vec_y,std_vec_y)=(mean_vec_x.to(device),
-        std_vec_x.to(device),mean_vec_edge.to(device),std_vec_edge.to(device),mean_vec_y.to(device),std_vec_y.to(device))
-
-    # build model
-    num_node_features = dataset[0].x.shape[1]
-    num_edge_features = dataset[0].edge_attr.shape[1]
-    num_classes = 2 # the dynamic variables have the shape of 2 (velocity)
-    if args.model_type == 'autoencoder':
-        model = AutoEncoder(num_node_features, args.hidden_dim, args.num_classes, args).to(device)
-    else:
-        model = MeshGraphNet(num_node_features, num_edge_features, args.hidden_dim, num_classes,
-                                args).to(device)
-    scheduler, opt = build_optimizer(args, model.parameters())
+    
+    #Define the model name for saving
+    now = datetime.now()
+    dt_string = now.strftime("%d.%m.%Y_%H.%M.%S")
+    model_name= "model_" + dt_string
+    args_name = "args_" + dt_string
+    # TODO: Save args in a file with date and time
+    
 
     # train
-    losses = []
-    test_losses = []
-    velo_val_losses = []
-    best_test_loss = np.inf
+    # NOTE: Might make dependent on args which loss function
+    loss_func = MSELoss()
+    train_losses = []
+    val_losses = []
+    best_val_loss = np.inf
     best_model = None
     for epoch in trange(args.epochs, desc="Training", unit="Epochs"):
         total_loss = 0
         model.train()
-        num_loops=0
-        for batch in loader:
-            data = transform(batch).to(device)
+        for idx, batch in enumerate(train_loader):
+            # data = transform(batch).to(args.device)
             #Note that normalization must be done before it's called. The unnormalized
             #data needs to be preserved in order to correctly calculate the loss
-            batch=batch.to(device)
-            opt.zero_grad()         #zero gradients each time
-            if args.model_type == 'autoencoder':
-                pred = model(data, mean_vec_x, std_vec_x)  
-            else:
-                pred = model(data, mean_vec_x, std_vec_x, mean_vec_edge, std_vec_edge)
-            loss = model.loss(pred, batch, mean_vec_y, std_vec_y)
+            # NOTE: This is only temrporary
+            b_lst = batch.to_data_list()
+            tmp = []
+            for b in b_lst:
+                w = b.x.new_ones(b.x.shape[0], 1)
+                b.weights = w
+                tmp.append(b)
+            batch = Batch.from_data_list(tmp)
+            # NOTE: REMEMBER TO REMOVE THHIS
+            batch=batch.to(args.device)
+            optimizer.zero_grad()         #zero gradients each time
+            pred, z = model(batch)
+            # NOTE: Does the loss have to be a function in the model? 
+            loss = loss_func(pred.x, batch.x)
             loss.backward()         #backpropagate loss
-            opt.step()
+            optimizer.step()
             total_loss += loss.item()
-            num_loops+=1
-        total_loss /= num_loops
-        losses.append(total_loss)
+
+        total_loss /= idx
+        train_losses.append(total_loss)
 
         #Every tenth epoch, calculate acceleration test loss and velocity validation loss
         if epoch % 10 == 0:
-            if (args.save_velo_val):
-                # save velocity evaluation
-                test_loss, velo_val_rmse = test(test_loader,device,model,mean_vec_x,std_vec_x,mean_vec_edge,
-                                 std_vec_edge,mean_vec_y,std_vec_y, args.save_velo_val, model_type=args.model_type)
-                velo_val_losses.append(velo_val_rmse.item())
-            else:
-                test_loss, _ = test(test_loader,device,model,mean_vec_x,std_vec_x,mean_vec_edge,
-                                 std_vec_edge,mean_vec_y,std_vec_y, args.save_velo_val, model_type=args.model_type)
+            val_loss = validate(model, val_loader, loss_func, args)
+            val_losses.append(val_loss)
+            if args.save_model:
+                if val_loss < best_val_loss:
+                    best_model = copy.deepcopy(model)
+                    save_model(best_model, model_name, args)
+                    save_args(args_name, args)
+                    best_val_loss = val_loss
 
-            test_losses.append(test_loss.item())
-
-            # saving model
-            if not os.path.isdir( args.checkpoint_dir ):
-                os.mkdir(args.checkpoint_dir)
-
-            PATH = os.path.join(args.checkpoint_dir, model_name+'.csv')
-            df.to_csv(PATH,index=False)
-
-            #save the model if the current one is better than the previous best
-            if test_loss < best_test_loss:
-                best_test_loss = test_loss
-                best_model = copy.deepcopy(model)
 
         else:
             #If not the tenth epoch, append the previously calculated loss to the
             #list in order to be able to plot it on the same plot as the training losses
-            if (args.save_velo_val):
-              test_losses.append(test_losses[-1])
-              velo_val_losses.append(velo_val_losses[-1])
+            val_losses.append(val_losses[-1])
 
-        if(epoch%100==0):
-            if (args.save_velo_val):
-                print("train loss", str(round(total_loss, 4)),
-                      "test loss", str(round(test_loss.item(), 4)),
-                      "velo loss", str(round(velo_val_rmse.item(), 5)))
-            else:
-                print("train loss", str(round(total_loss,2)), "test loss", str(round(test_loss.item(),4)))
+        if(epoch%1==0):
+            print("train loss", str(round(train_losses[-1], 4)),
+                    "val loss", str(round(val_losses[-1], 4)))
 
 
-            if(args.save_best_model):
-                if not os.path.exists(args.checkpoint_dir):
-                    os.makedirs(args.checkpoint_dir)
-                PATH = os.path.join(args.checkpoint_dir, model_name+'.pt')
-                torch.save(best_model.state_dict(), PATH )
 
-    return test_losses, losses, velo_val_losses, best_model, best_test_loss, test_loader
+    return train_losses, val_losses, best_model
 
-def test(loader,device,test_model,
+
+""" def test(loader,device,test_model,
          mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge,mean_vec_y,std_vec_y, is_validation,
           delta_t=0.01, save_model_preds=False, model_type=None):
+    raise(NotImplemented)
   
     '''
     Calculates test set losses and validation set errors.
@@ -201,4 +194,4 @@ def test(loader,device,test_model,
 
         num_loops+=1
         # if velocity is evaluated, return velo_rmse as 0
-    return loss/num_loops, velo_rmse/num_loops
+    return loss/num_loops, velo_rmse/num_loops """

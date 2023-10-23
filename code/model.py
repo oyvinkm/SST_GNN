@@ -19,9 +19,9 @@ class MultiScaleAutoEncoder(nn.Module):
         self.hidden_dim = args.hidden_dim
         self.ae_layers = args.ae_layers
         if args.ae_ratio is None:
-            self.ratio = 0.5
+            self.ae_ratio = 0.5
         else:
-            self.ratio = args.ae_ratio
+            self.ae_ratio = args.ae_ratio
         if args.latent_dim is None:
             self.latent_dim = args.hidden_dim
         else:
@@ -35,7 +35,7 @@ class MultiScaleAutoEncoder(nn.Module):
         for _ in range(self.ae_layers):
             self.down_layers.append(MessagePassingLayer(args=self.args))
             self.up_layers.append(MessagePassingLayer(args=self.args))
-            self.down_pool.append(TopKPooling(self.hidden_dim, self.ratio))
+            self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
             self.up_pool.append(Unpool())
 
         self.bottom_layer = MessagePassingLayer(args=self.args)
@@ -135,9 +135,9 @@ class MessagePassingLayer(torch.nn.Module):
         self.edge_conv = WeightedEdgeConv()
         self.pools = nn.ModuleList()
         if self.args.mpl_ratio is None:
-            self.ratio = 0.5
+            self.ae_ratio = 0.5
         else:
-            self.ratio = self.args.mpl_ratio
+            self.ae_ratio = self.args.mpl_ratio
 
         for _ in range(self.l_n):
             self.down_gmps.append(
@@ -151,13 +151,13 @@ class MessagePassingLayer(torch.nn.Module):
                 self.pools.append(
                     ASAPooling(
                         in_channels=self.latent_dim,
-                        ratio=self.ratio,
+                        ratio=self.ae_ratio,
                         GNN=GraphConv))
             else:
                 self.pools.append(
                     TopKPooling(
                         self.hidden_dim,
-                        self.args.ratio))
+                        self.ae_ratio))
 
     def forward(self, b_data):
         down_outs = []
