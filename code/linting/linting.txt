@@ -1,0 +1,8 @@
+black run.py
+isort run.py
+ruff check run.py
+autopep8 --aggressive run.py
+pylint run.py
+
+
+py-spy record -o profile.svg --python run.py
