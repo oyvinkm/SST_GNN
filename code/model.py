@@ -1,3 +1,7 @@
+"""
+    This file contains the classes used to build our Multi Scale Auto Encoder GNN.
+"""
+
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential
@@ -8,8 +12,17 @@ from torch_scatter import scatter
 
 
 class MultiScaleAutoEncoder(nn.Module):
+    """
+    Multiscale Auto Encoder consist of n_layer of Message Passing Layers (MPL) with
+    pooling and unpooling operations in between in order to obtain a coarse latent
+    representation of a graph. Uses an Multilayer Perceptron (MLP) to compute node and
+    edge features.
+    Encode: G_0 -> MLP -> MPL -> TopKPool ... MPL -> G_l
+    Decode: G_l -> MPL -> Unpool .... -> MPL -> MLP -> G'_0
+    """
+
     def __init__(self, args):
-        super(MultiScaleAutoEncoder, self).__init__()
+        super().__init__()
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
         if args.out_feature_dim is None:
@@ -63,6 +76,7 @@ class MultiScaleAutoEncoder(nn.Module):
         )
 
     def forward(self, b_data):
+        """Forward loop, first encoder, then bottom layer, then decoder"""
         x = b_data.x
         edge_attr = b_data.edge_attr
         x = self.node_encoder(x)
@@ -99,10 +113,7 @@ class MultiScaleAutoEncoder(nn.Module):
         for i in range(self.ae_layers):
             up_idx = self.ae_layers - i - 1
             x = self.up_layers[i](b_data)
-            x = self.up_pool[i](
-                b_data.x,
-                down_outs[up_idx].shape[0],
-                perms[up_idx])
+            x = self.up_pool[i](b_data.x, down_outs[up_idx].shape[0], perms[up_idx])
             b_data.weights = ws[up_idx]
             b_data.batch = bs[up_idx]
             b_data.x = x
@@ -117,6 +128,10 @@ class MultiScaleAutoEncoder(nn.Module):
 
 
 class MessagePassingLayer(torch.nn.Module):
+    """
+    Kinda like a U-Net but with Message Passing Blocks.
+    """
+
     def __init__(self, args):
         super(MessagePassingLayer, self).__init__()
         self.hidden_dim = args.hidden_dim
@@ -130,8 +145,7 @@ class MessagePassingLayer(torch.nn.Module):
         self.down_gmps = nn.ModuleList()
         self.up_gmps = nn.ModuleList()
         self.unpools = nn.ModuleList()
-        self.bottom_gmp = MessagePassingBlock(
-            hidden_dim=self.latent_dim, args=args)
+        self.bottom_gmp = MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
         self.edge_conv = WeightedEdgeConv()
         self.pools = nn.ModuleList()
         if self.args.mpl_ratio is None:
@@ -150,16 +164,14 @@ class MessagePassingLayer(torch.nn.Module):
             if self.args.pool_strat == "ASA":
                 self.pools.append(
                     ASAPooling(
-                        in_channels=self.latent_dim,
-                        ratio=self.ae_ratio,
-                        GNN=GraphConv))
+                        in_channels=self.latent_dim, ratio=self.ae_ratio, GNN=GraphConv
+                    )
+                )
             else:
-                self.pools.append(
-                    TopKPooling(
-                        self.hidden_dim,
-                        self.ae_ratio))
+                self.pools.append(TopKPooling(self.hidden_dim, self.ae_ratio))
 
     def forward(self, b_data):
+        """Forward pass through Message Passing Layer"""
         down_outs = []
         cts = []
         down_masks = []
@@ -189,7 +201,8 @@ class MessagePassingLayer(torch.nn.Module):
             cts.append(ew)
             if self.args.pool_strat == "ASA":
                 x, edge_index, edge_weight, batch, index = self.pools[i](
-                    b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch)
+                    b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch
+                )
                 down_masks.append(index)
                 b_data.x = x
                 b_data.edge_index = edge_index
@@ -235,6 +248,10 @@ class MessagePassingLayer(torch.nn.Module):
 
 
 class WeightedEdgeConv(MessagePassing):
+    """
+    Weighted Edge Convolution used for pooling and unpooling.
+    """
+
     def __init__(self):
         super().__init__(aggr="add", flow="target_to_source")
 
@@ -250,8 +267,9 @@ class WeightedEdgeConv(MessagePassing):
             raise NotImplementedError("Only implemented for dim 2 and 3")
         weighted_info *= ew.unsqueeze(-1)
         target_index = j if aggragating else i
-        aggr_out = scatter(weighted_info, target_index,
-                           dim=-2, dim_size=x.shape[-2], reduce="sum")
+        aggr_out = scatter(
+            weighted_info, target_index, dim=-2, dim_size=x.shape[-2], reduce="sum"
+        )
         return aggr_out
 
     @torch.no_grad()
@@ -263,20 +281,18 @@ class WeightedEdgeConv(MessagePassing):
         w_to_send = normed_w[i]
         eps = 1e-12
         aggr_w = (
-            scatter(
-                w_to_send,
-                j,
-                dim=-
-                1,
-                dim_size=normed_w.size(0),
-                reduce="sum") +
-            eps)
+            scatter(w_to_send, j, dim=-1, dim_size=normed_w.size(0), reduce="sum") + eps
+        )
         ec = w_to_send / aggr_w[j]
         return ec, aggr_w
 
 
 class MessagePassingBlock(torch.nn.Module):
-    def __init__(self, hidden_dim, args, num_blocks=None, emb=False):
+    """
+    Just combines n number of message passing layers
+    """
+
+    def __init__(self, hidden_dim, args, num_blocks=None):
         super(MessagePassingBlock, self).__init__()
         if num_blocks is None:
             self.num_blocks = args.num_blocks
@@ -302,6 +318,10 @@ class MessagePassingBlock(torch.nn.Module):
 
 
 class Unpool(nn.Module):
+    """
+    Fills an empty array
+    """
+
     def __init__(self, *args):
         super(Unpool, self).__init__()
 
@@ -312,13 +332,15 @@ class Unpool(nn.Module):
 
 
 class GCNConv(MessagePassing):
+    """
+    Classic MessagePassing/Convolution
+    """
+
     def __init__(self, in_channels, out_channels):
         super(GCNConv, self).__init__(aggr="add")  # "Add" aggregation.
         self.lin = torch.nn.Linear(in_channels, out_channels)
 
     def forward(self, x, edge_index):
-        if not isinstance(edge_index, torch.Tensor):
-            edge_index = torch.tensor(edge_index)
         # x has shape [num_nodes, in_channels]
         # edge_index has shape [2, E]
 

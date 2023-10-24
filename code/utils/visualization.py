@@ -159,7 +159,7 @@ def draw_graph(g, save = False, args = None):
   plt.show()
 
 @torch.no_grad()
-def plot_mesh(gs, args):
+def plot_mesh(gs, title = None, args = None):
   fig, ax = plt.subplots(1, 1, figsize=(20, 16))
   bb_min = gs.x[:, 0:2].min() # first two columns are velocity
   bb_max = gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
@@ -180,7 +180,7 @@ def plot_mesh(gs, args):
   ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
 
 
-  ax.set_title('SET', fontsize = '20')
+  ax.set_title(title, fontsize = '20')
   #ax.color
 
   #if (count == 0):
@@ -191,5 +191,79 @@ def plot_mesh(gs, args):
 
   clb.ax.set_title('x velocity (m/s)',
                       fontdict = {'fontsize': 20})
-  fig,
   return fig
+
+
+@torch.no_grad()
+def plot_dual_mesh(pred_gs, true_gs, title = None, args = None):
+    fig, axes = plt.subplots(2, 1, figsize=(20, 16))
+    bb_min = pred_gs.x[:, 0:2].min() # first two columns are velocity
+    bb_max = pred_gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
+                                        # gs and prediction plots
+
+    for idx, ax in enumerate(axes):
+        if idx == 0:
+            pos = pred_gs.mesh_pos
+            faces = pred_gs.cells
+            velocity = pred_gs.x[:, 0:2]
+            title = 'Prediction'
+        elif idx == 1:
+            pos = true_gs.mesh_pos
+            faces = true_gs.cells
+            velocity = true_gs.x[:, 0:2]
+            title = 'Ground Truth'
+
+        ax.cla()
+        ax.set_aspect('equal')
+        ax.set_axis_off()
+
+        
+
+
+        triang = mtri.Triangulation(pos[:, 0].cpu(), pos[:, 1].cpu(), faces.cpu())
+        mesh_plot = ax.tripcolor(triang, velocity[:, 0].cpu(), vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
+        ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
+
+
+        ax.set_title(title, fontsize = '20')
+        #ax.color
+
+        #if (count == 0):
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        clb = fig.colorbar(mesh_plot, cax=cax, orientation='vertical')
+        clb.ax.tick_params(labelsize=20) 
+
+        clb.ax.set_title('x velocity (m/s)',
+                            fontdict = {'fontsize': 20})
+    return fig
+
+
+def plot_loss(train_loss=None, train_label = 'Rotate', 
+                   val_loss=None, val_label = 'One or Two', 
+                   extra_loss=None, extra_label = 'Patches', 
+                   label="Loss", title = 'Loss / Epoch', PATH = None):
+    """
+    Takes a list of training and/or validation metrics and plots them
+    Returns: plt.figure and ax objects
+    """
+    if train_loss is None and val_loss is None:
+        raise ValueError("Must specify at least one of 'train_histories' and 'val_histories'")
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111)
+    
+    epochs = np.arange(len(train_loss))
+    if train_loss is not None:
+        ax.plot(epochs, train_loss, linewidth = .8, label=train_label, color="dodgerblue")
+    if val_loss is not None:
+        ax.plot(epochs, val_loss, linewidth = .8, label=val_label, color="darkgreen")
+    if extra_loss is not None:
+        ax.plot(epochs, extra_loss, linewidth = .8, label=extra_label, color="darkred")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel(label)
+    ax.legend(loc=0)
+    fig.suptitle(title)
+    if PATH is not None:
+        plt.savefig(PATH)
+    
+    return fig, ax

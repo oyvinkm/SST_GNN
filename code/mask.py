@@ -1,16 +1,19 @@
+from typing import Optional, Tuple, Union
+
 import torch
-from typing import List, Optional, Union
+from torch import Tensor
 from torch_geometric.data import Data, HeteroData
 from torch_geometric.data.datapipes import functional_transform
-from torch_geometric.utils import dropout_edge
 from torch_geometric.transforms import BaseTransform
-from torch import Tensor
-from typing import Optional, Tuple
 from torch_geometric.typing import OptTensor
+from torch_geometric.utils import dropout_edge
 
-def filter_adj(row: Tensor, col: Tensor, edge_attr: OptTensor,
-               mask: Tensor) -> Tuple[Tensor, Tensor, OptTensor]:
+
+def filter_adj(
+    row: Tensor, col: Tensor, edge_attr: OptTensor, mask: Tensor
+) -> Tuple[Tensor, Tensor, OptTensor]:
     return row[mask], col[mask], None if edge_attr is None else edge_attr[mask]
+
 
 def dropout_adj(
     edge_index: Tensor,
@@ -20,11 +23,10 @@ def dropout_adj(
     num_nodes: Optional[int] = None,
     training: bool = True,
 ) -> Tuple[Tensor, OptTensor]:
-    r""" Stolen shamelessly from pytorch-geometric. We don't want to use the 
+    r"""Stolen shamelessly from pytorch-geometric. We don't want to use the
     function from their library as it will be deprecated soon."""
-    if p < 0. or p > 1.:
-        raise ValueError(f'Dropout probability has to be between 0 and 1 '
-                         f'(got {p}')
+    if p < 0.0 or p > 1.0:
+        raise ValueError(f"Dropout probability has to be between 0 and 1 " f"(got {p}")
 
     if not training or p == 0.0:
         return edge_index, edge_attr
@@ -40,8 +42,8 @@ def dropout_adj(
 
     if force_undirected:
         edge_index = torch.stack(
-            [torch.cat([row, col], dim=0),
-             torch.cat([col, row], dim=0)], dim=0)
+            [torch.cat([row, col], dim=0), torch.cat([col, row], dim=0)], dim=0
+        )
         if edge_attr is not None:
             edge_attr = torch.cat([edge_attr, edge_attr], dim=0)
     else:
@@ -49,7 +51,8 @@ def dropout_adj(
 
     return edge_index, edge_attr
 
-@functional_transform('AttributeMask')
+
+@functional_transform("AttributeMask")
 class AttributeMask(BaseTransform):
     """
     Sets attributes of random nodes to 0. The nodes are chosen with probability p
@@ -58,10 +61,11 @@ class AttributeMask(BaseTransform):
              obj: 'cached_features': the features that was given as input,
                    converted to 32 bit float
     """
+
     def __init__(self, p=0.1):
         self.p = p
-    
-    def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
+
+    def __call__(self, dataobject: Union[Data, HeteroData]) -> Union[Data, HeteroData]:
         dataobject.x = dataobject.x.to(torch.float32)
         idx_train = torch.arange(dataobject.x.shape[0])
         nfeat = dataobject.x.shape[1]
@@ -71,27 +75,37 @@ class AttributeMask(BaseTransform):
 
         return dataobject
 
-@functional_transform('my_edge_mask')
+
+@functional_transform("my_edge_mask")
 class EdgeMask(BaseTransform):
-    r"""Removes each edge in the graph with the probability given in :obj:'p' 
+    r"""Removes each edge in the graph with the probability given in :obj:'p'
         (functional name: :obj:`edge_mask`).
 
     Args:
         p (float): The probability to remove each edge
             (default: :obj:`0.5`)
     """
+
     def __init__(self, p=0.5):
         self.p = p
-        
-    def __call__(self, dataobject : Union[Data, HeteroData]) -> Union[Data, HeteroData]:
-        if dataobject.edge_attr == None:
-            edge_index, _ = dropout_edge(dataobject.edge_index, self.p, force_undirected=True)
+
+    def __call__(self, dataobject: Union[Data, HeteroData]) -> Union[Data, HeteroData]:
+        if dataobject.edge_attr is None:
+            edge_index, _ = dropout_edge(
+                dataobject.edge_index, self.p, force_undirected=True
+            )
             dataobject.edge_index = edge_index
         else:
-            edge_index, edge_attr = dropout_adj(dataobject.edge_index, dataobject.edge_attr, self.p, force_undirected=True)
+            edge_index, edge_attr = dropout_adj(
+                dataobject.edge_index,
+                dataobject.edge_attr,
+                self.p,
+                force_undirected=True,
+            )
             dataobject.edge_index = edge_index
             dataobject.edge_attr = edge_attr
         return dataobject
+
 
 """From 
 https://pytorch-geometric.readthedocs.io/en/latest/get_started/introduction.html
