@@ -14,9 +14,7 @@ python argtest.py \
     -epochs 100 \
     -ae_layers 2 \
     -ae_ratio 0.5 \
-    -in_dim_node 11 \
     -hidden_dim 64 \
-    -in_dim_edge 3 \
     -mpl_layers 2 \
     -num_blocks 2 \
     -latent_dim None \
@@ -43,6 +41,6 @@ python argtest.py \
     -save_visual True \
     -save_losses True \
     -save_mesh True \
-    -logger_lvl Debug \
+    -logger_lvl DEBUG \
     -num_layers 2 \
     -time_stamp $now
