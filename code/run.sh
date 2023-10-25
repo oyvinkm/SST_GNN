@@ -1,16 +1,14 @@
 #!/bin/bash
 
 python run.py \
-	--datadir 'data/cylinder_flow/'
+	--data_dir 'data/cylinder_flow/'
     --instance_id 1
-    --normalize 'False'
     --test_ratio 0.1
     --val_ratio 0.1
+    --normalize 'False'
     --batch_size 16
-    --shuffle 'True'
-    --num_workers 1
-    --transforms 'None'
     --out_feature_dim 11
+    --epochs 100
     --ae_layers 2
     --ae_ratio 0.5
     --in_dim_node 11
@@ -22,12 +20,25 @@ python run.py \
     --pool_strat 'ASA'
     --mpl_ratio 0.5
     --opt 'adam'
-    --learning_rate 0.001
+    --lr 0.001
     --weight_decay 0.0005
     --opt_decay_step 30
-    --
-    --model_type 'autoencoder' \
-    --num_layers 1 \
-    --batch_size 16 \
-    --hidden_dim 64 \
-    
+    --opt_decay_rate 0.1
+    --opt_scheduler 'step'
+    --opt_restart 10
+    --num_workers 1
+    --shuffle 'True'
+    --transforms 'None'
+    --save_model_dir 'model_chkpoints'
+    --save_plot_dir 'plots'
+    --save_plot 'True'
+    --save_args_dir 'args_chkpoints'
+    --save_visualize_dir 'visualizations'
+    --save_mesh_dir 'meshes'
+    --save_model 'True'
+    --save_visual 'True'
+    --save_losses 'True'
+    --save_mesh
+    --logger_lvl 'Debug'
+    --num_layers 2
+    --time_stamp 'None'
