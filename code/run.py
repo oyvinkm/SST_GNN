@@ -19,60 +19,70 @@ from mask import AttributeMask
 from opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
+import argparse
 
 # TODO: Set up args so they can be called from config file
 # NOTE: Set args up to take loss function.
+def none_or_str(value):
+    if value.lower() == 'none':
+        return None
+    return value
 
+def none_or_int(value):
+    if value == 'None':
+        return None
+    return int(value)
+
+def none_or_float(value):
+    if value == 'None':
+        return None
+    return float(value)
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-data_dir', type=str, default='data/cylinder_flow/')
+parser.add_argument('-save_args_dir', type=str, default='args_chkpoints')
+parser.add_argument('-save_visualize_dir', type=str, default='visualizations')
+parser.add_argument('-save_mesh_dir', type=str, default='meshes')
+parser.add_argument('-pool_strat', type=str, default='ASA')
+parser.add_argument('-opt', type=str, default='adam')
+parser.add_argument('-opt_scheduler', type=str, default='step')
+parser.add_argument('-save_model_dir', type=str, default='model_chkpoints')
+parser.add_argument('-save_plot_dir', type=str, default='plots')
+parser.add_argument('-logger_lvl', type=str, default='DEBUG')
+parser.add_argument('-transform', type=none_or_str, default=None)
+parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
+parser.add_argument('-normalize', type=bool, default=False)
+parser.add_argument('-shuffle', type=bool, default=True)
+parser.add_argument('-save_plot', type=bool, default=True)
+parser.add_argument('-save_model', type=bool, default=True)
+parser.add_argument('-save_visual', type=bool, default=True)
+parser.add_argument('-save_losses', type=bool, default=True)
+parser.add_argument('-save_mesh', type=bool, default=True)
+parser.add_argument('-test_ratio', type=float, default=0.2)
+parser.add_argument('-val_ratio', type=float, default=0.1)
+parser.add_argument('-mpl_ratio', type=float, default=0.5)
+parser.add_argument('-lr', type=float, default=0.001)
+parser.add_argument('-weight_decay', type=float, default=0.0005)
+parser.add_argument('-opt_decay_rate', type=float, default=0.1)
+parser.add_argument('-transform_p', type=float, default=0.1)
+parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
+parser.add_argument('-instance_id', type=int, default=1)
+parser.add_argument('-batch_size', type=int, default=16)
+parser.add_argument('-epochs', type=int, default=5)
+parser.add_argument('-ae_layers', type=int, default=2)
+parser.add_argument('-hidden_dim', type=int, default=64)
+parser.add_argument('-mpl_layers', type=int, default=2)
+parser.add_argument('-num_blocks', type=int, default=1)
+parser.add_argument('-opt_decay_step', type=int, default=30)
+parser.add_argument('-opt_restart', type=int, default=10)
+parser.add_argument('-num_workers', type=int, default=1)
+parser.add_argument('-num_layers', type=int, default=2)
+parser.add_argument('-out_feature_dim', type=none_or_int, default=None)
+parser.add_argument('-latent_dim', type=none_or_int, default=None)
+args = parser.parse_args()
+logger.debug(f"args = \n{args}")
 
 def main():
-    class objectview(object):
-        def __init__(self, d):
-            self.__dict__ = d
-
-    for args in [
-        {
-            "data_dir": "data/cylinder_flow/",
-            "instance_id": 1,
-            "normalize": False,
-            "epochs": 20,
-            "test_ratio": 0.2,
-            "val_ratio": 0.1,
-            "batch_size": 16,
-            "shuffle": True,
-            "num_workers": 1,
-            "transforms": None,
-            "num_layers": 2,
-            "out_feature_dim": 11,
-            "ae_layers": 2,
-            "ae_ratio": 0.5,
-            "in_dim_node": 11,
-            "hidden_dim": 64,  # 64
-            "in_dim_edge": 3,
-            "mpl_layers": 2,  # 2
-            "num_blocks": 2,  # 2
-            "latent_dim": None,
-            "pool_strat": "ASA",
-            "mpl_ratio": 0.5,
-            "opt": "adam",
-            "lr": 0.001,
-            "weight_decay": 0.0005,
-            "opt_decay_step": 30,
-            "time_stamp": None,
-            "transform_p" : 0.2,
-            "transform" : "node",
-            "transforms" : None,
-            "opt_scheduler": None,
-            "save_model": False,
-            "save_plot": True,
-            "save_mesh": True,
-            "save_model_dir": "model_chkpoints",
-            "save_args_dir": "args_chkpoints",
-            "save_plot_dir": "plots",
-            "save_mesh_dir": "meshes",
-        },
-    ]:
-        args = objectview(args)
-
     # To ensure reproducibility the best we can, here we control the sources of
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
@@ -80,10 +90,6 @@ def main():
     torch.manual_seed(5)  # Torch
     random.seed(5)  # Python
     np.random.seed(5)  # NumPy
-
-    # Define the model name for saving
-    now = datetime.now()
-    args.time_stamp = now.strftime("%d.%m.%Y_%H.%M.%S")
 
     # Set device to cuda if availale
     if torch.cuda.is_available():
@@ -111,11 +117,11 @@ def main():
 
     # Split training data into train and validation data
     # TODO: calculate correct val_ratio
-    train_data, val_data = train_test_split(train_data, test_size=args.val_ratio)
-    
+    train_data, val_data = train_test_split(train_data, test_size=args.val_ratio / (1 - args.test_ratio))
+
     logger.info(
-        f"Train size : {len(train_data)}, \
-        Validation size : {len(val_data)}, \
+        f"Train size : {len(train_data)}, \n\
+        Validation size : {len(val_data)}, \n\
         Test size : {len(test_data)}"
     )
     # Create Dataloaders for train, test and validation
@@ -176,7 +182,7 @@ if __name__ == "__main__":
     # ERROR (40): used to record error conditions that affected a specific operation.
     # CRITICAL (50): used to used to record error conditions that prevent a core
     # function from working.
-    logger.add(sys.stderr, level="INFO")
+    logger.add(sys.stderr, level=args.logger_lvl)
 
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     logger.info(f"CUDA has version: {torch.version.cuda}")  
