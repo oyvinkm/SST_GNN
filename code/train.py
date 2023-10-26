@@ -50,6 +50,8 @@ def validate(model, val_loader, loss_func, epoch, args):
         # data needs to be preserved in order to correctly calculate the loss
         batch = batch.to(args.device)
         b_data = batch.clone()
+        if args.transforms is not None:
+            b_data = args.transforms(b_data)
         pred, _ = model(b_data)
         loss = loss_func(pred.x, batch.x)
         total_loss += loss.item()
@@ -72,6 +74,8 @@ def test(model, test_loader, loss_func, args):
         # data needs to be preserved in order to correctly calculate the loss
         batch = batch.to(args.device)
         b_data = batch.clone()
+        if args.transforms is not None:
+            b_data = args.transforms(b_data)
         pred, _ = model(b_data)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 1, args)
@@ -106,7 +110,13 @@ def train(model, train_loader, val_loader, optimizer, args):
             # Note that normalization must be done before it's called. The unnormalized
             # data needs to be preserved in order to correctly calculate the loss
             batch = batch.to(args.device)
+            logger.debug(f'batch : {batch}')
             b_data = batch.clone()
+            logger.debug(f'b_data : {b_data}')
+            logger.debug(f'Data before transformation, true mean : {np.sum(batch.x.detach().numpy())}, transformed mean : {np.sum(b_data.x.detach().numpy())} ')
+            if args.transforms is not None:
+                b_data = args.transforms(b_data)
+                logger.debug(f'Data transformed, true mean : {np.mean(batch.x.detach().numpy())}, transformed mean : {np.mean(b_data.x.detach().numpy())} ')
             optimizer.zero_grad()  # zero gradients each time
             pred, _ = model(b_data)
             # NOTE: Does the loss have to be a function in the model?

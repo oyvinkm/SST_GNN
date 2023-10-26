@@ -11,9 +11,11 @@ import torch
 from loguru import logger
 from sklearn.model_selection import train_test_split
 from torch_geometric.loader import DataLoader
+from torch_geometric import transforms as T
 
 from dataprocessing.dataset import MeshDataset
 from model import MultiScaleAutoEncoder
+from mask import AttributeMask
 from opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
@@ -56,8 +58,11 @@ def main():
             "weight_decay": 0.0005,
             "opt_decay_step": 30,
             "time_stamp": None,
+            "transform_p" : 0.2,
+            "transform" : "node",
+            "transforms" : None,
             "opt_scheduler": None,
-            "save_model": True,
+            "save_model": False,
             "save_plot": True,
             "save_mesh": True,
             "save_model_dir": "model_chkpoints",
@@ -107,7 +112,7 @@ def main():
     # Split training data into train and validation data
     # TODO: calculate correct val_ratio
     train_data, val_data = train_test_split(train_data, test_size=args.val_ratio)
-
+    
     logger.info(
         f"Train size : {len(train_data)}, \
         Validation size : {len(val_data)}, \
@@ -120,6 +125,12 @@ def main():
     )
     val_loader = DataLoader(val_data, batch_size=4, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+
+    if args.transform == 'node':
+        args.transforms = T.Compose([AttributeMask(args.transform_p)])
+    else: 
+        args.transforms = None
+        
     # TRAINING
 
     train_losses, val_losses, model = train(
@@ -129,6 +140,7 @@ def main():
         optimizer=optimizer,
         args=args,
     )
+
     if args.save_plot:
         loss_name = "loss_" + args.time_stamp
         if not os.path.isdir(args.save_plot_dir):
@@ -164,8 +176,8 @@ if __name__ == "__main__":
     # ERROR (40): used to record error conditions that affected a specific operation.
     # CRITICAL (50): used to used to record error conditions that prevent a core
     # function from working.
-    logger.add(sys.stderr, level="DEBUG")
+    logger.add(sys.stderr, level="INFO")
 
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
-    logger.info(f"CUDA has version: {torch.version.cuda}")
+    logger.info(f"CUDA has version: {torch.version.cuda}")  
     main()
