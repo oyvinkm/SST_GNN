@@ -48,7 +48,7 @@ parser.add_argument('-opt', type=str, default='adam')
 parser.add_argument('-opt_scheduler', type=str, default='step')
 parser.add_argument('-save_model_dir', type=str, default='model_chkpoints')
 parser.add_argument('-save_plot_dir', type=str, default='plots')
-parser.add_argument('-logger_lvl', type=str, default='DEBUG')
+parser.add_argument('-logger_lvl', type=str, default='INFO')
 parser.add_argument('-transform', type=none_or_str, default=None)
 parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
 parser.add_argument('-normalize', type=bool, default=False)
@@ -58,6 +58,9 @@ parser.add_argument('-save_model', type=bool, default=True)
 parser.add_argument('-save_visual', type=bool, default=True)
 parser.add_argument('-save_losses', type=bool, default=True)
 parser.add_argument('-save_mesh', type=bool, default=True)
+parser.add_argument('-load_model', type=bool, default=True)
+parser.add_argument('-model_file', type=none_or_str, default=None)
+
 parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
 parser.add_argument('-mpl_ratio', type=float, default=0.5)
@@ -68,7 +71,7 @@ parser.add_argument('-transform_p', type=float, default=0.1)
 parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-batch_size', type=int, default=16)
-parser.add_argument('-epochs', type=int, default=5)
+parser.add_argument('-epochs', type=int, default=40)
 parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-hidden_dim', type=int, default=64)
 parser.add_argument('-mpl_layers', type=int, default=2)
@@ -83,6 +86,7 @@ args = parser.parse_args()
 logger.debug(f"args = \n{args}")
 
 def main():
+    #args.transform = 'Attribute'
     # To ensure reproducibility the best we can, here we control the sources of
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
@@ -105,9 +109,14 @@ def main():
         dataset[0].num_features,
         dataset[0].edge_attr.shape[1],
     )
-
+    args.model_file = 'model_2023_10_26-13.20.pt'
     # Initialize Model
     model = MultiScaleAutoEncoder(args)
+    model_path = os.path.join(args.save_model_dir , args.model_file)
+    if args.load_model and os.path.isfile(model_path):
+        model.load_state_dict(torch.load(model_path))
+        logger.success(f'Multi Scale Autoencoder loaded from {args.model_file}')
+        
 
     # Initialize optimizer and scheduler(?)
     scheduler, optimizer = build_optimizer(args, model.parameters())
@@ -120,7 +129,7 @@ def main():
     train_data, val_data = train_test_split(train_data, test_size=args.val_ratio / (1 - args.test_ratio))
 
     logger.info(
-        f"Train size : {len(train_data)}, \n\
+        f"\n\tTrain size : {len(train_data)}, \n\
         Validation size : {len(val_data)}, \n\
         Test size : {len(test_data)}"
     )
@@ -131,11 +140,6 @@ def main():
     )
     val_loader = DataLoader(val_data, batch_size=4, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
-
-    if args.transform == 'node':
-        args.transforms = T.Compose([AttributeMask(args.transform_p)])
-    else: 
-        args.transforms = None
         
     # TRAINING
 

@@ -6,9 +6,13 @@ import os
 
 import numpy as np
 import torch
+import enlighten
 from loguru import logger
 from torch.nn import MSELoss
 from tqdm import trange
+from mask import AttributeMask
+from torch_geometric import transforms as T
+from matplotlib import pyplot as plt
 
 from utils.visualization import plot_dual_mesh
 
@@ -38,20 +42,20 @@ def save_mesh(pred, truth, idx, args):
     path = os.path.join(args.save_mesh_dir, mesh_name + ".png")
     fig = plot_dual_mesh(pred, truth)
     fig.savefig(path, bbox_inches="tight")
+    plt.close()
 
 
 @torch.no_grad()
 def validate(model, val_loader, loss_func, epoch, args):
     total_loss = 0
-    model.train()
+    model.eval()
     for idx, batch in enumerate(val_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
         # data needs to be preserved in order to correctly calculate the loss
         batch = batch.to(args.device)
         b_data = batch.clone()
-        if args.transforms is not None:
-            b_data = args.transforms(b_data)
+        b_data = transform_batch(batch, args)
         pred, _ = model(b_data)
         loss = loss_func(pred.x, batch.x)
         total_loss += loss.item()
@@ -67,15 +71,13 @@ def test(model, test_loader, loss_func, args):
     if loss_func is None:
         loss_func = MSELoss()
     total_loss = 0
-    model.train()
+    model.eval()
     for idx, batch in enumerate(test_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
         # data needs to be preserved in order to correctly calculate the loss
         batch = batch.to(args.device)
-        b_data = batch.clone()
-        if args.transforms is not None:
-            b_data = args.transforms(b_data)
+        b_data = transform_batch(batch, args)
         pred, _ = model(b_data)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 1, args)
@@ -85,6 +87,13 @@ def test(model, test_loader, loss_func, args):
     total_loss /= idx
     return total_loss
 
+def transform_batch(b_data, args):
+    if args.transform == 'Attribute':
+        transforms = T.Compose([AttributeMask(args.transform_p)])
+        trsfmd = transforms(b_data.clone())
+        return trsfmd
+    else:
+        return b_data.clone()
 
 def train(model, train_loader, val_loader, optimizer, args):
     """
@@ -102,21 +111,24 @@ def train(model, train_loader, val_loader, optimizer, args):
     val_losses = []
     best_val_loss = np.inf
     best_model = None
-    for epoch in trange(args.epochs, desc="Training", unit="Epochs"):
+
+    manager = enlighten.get_manager()
+    epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
+    for epoch in range(args.epochs):
+        epochs.update()
         total_loss = 0
+        batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         model.train()
         for idx, batch in enumerate(train_loader):
+            batch_counter.update()
             # data = transform(batch).to(args.device)
             # Note that normalization must be done before it's called. The unnormalized
             # data needs to be preserved in order to correctly calculate the loss
             batch = batch.to(args.device)
             logger.debug(f'batch : {batch}')
-            b_data = batch.clone()
-            logger.debug(f'b_data : {b_data}')
-            logger.debug(f'Data before transformation, true mean : {np.sum(batch.x.detach().numpy())}, transformed mean : {np.sum(b_data.x.detach().numpy())} ')
-            if args.transforms is not None:
-                b_data = args.transforms(b_data)
-                logger.debug(f'Data transformed, true mean : {np.mean(batch.x.detach().numpy())}, transformed mean : {np.mean(b_data.x.detach().numpy())} ')
+            logger.debug(f'Data before transformation, true mean : {np.sum(batch.x.detach().numpy())}, transformed mean : {np.sum(batch.x.detach().numpy())} ')
+            b_data = transform_batch(batch, args)
+            logger.debug(f'Data transformed, true mean : {np.mean(batch.x.detach().numpy())}, transformed mean : {np.mean(b_data.x.detach().numpy())} ')
             optimizer.zero_grad()  # zero gradients each time
             pred, _ = model(b_data)
             # NOTE: Does the loss have to be a function in the model?
@@ -124,6 +136,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
+        batch_counter.close()
         logger.debug(f'Len loader: {len(train_loader)}')
         logger.debug(f"Index : {idx}")
         total_loss /= len(train_loader)
@@ -146,7 +159,8 @@ def train(model, train_loader, val_loader, optimizer, args):
             val_losses.append(val_losses[-1])
 
         if epoch % 1 == 0:
-            logger.info(f"Training Loss : {round(train_losses[-1], 4)}")
-            logger.info(f"Validation Loss : {round(val_losses[-1], 4)}")
+            logger.info(f"Loss Epoch_{epoch}:\n\
+                        Training Loss : {round(train_losses[-1], 4)}\n\
+                        Validation Loss : {round(val_losses[-1], 4)}")
 
     return train_losses, val_losses, best_model

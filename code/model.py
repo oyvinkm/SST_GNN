@@ -125,6 +125,8 @@ class MultiScaleAutoEncoder(nn.Module):
         b_data.edge_attr = in_edge_attr
 
         return b_data, z  # , edge_attr, edge_index
+    
+            
 
 
 class MessagePassingLayer(torch.nn.Module):
