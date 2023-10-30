@@ -3,7 +3,7 @@
 
 now="$(date +"%y_%m_%d-%H.%M")"
 
-python argtest.py \
+python run.py \
 	-data_dir data/cylinder_flow/  \
     -instance_id 1 \
     -test_ratio 0.1 \
