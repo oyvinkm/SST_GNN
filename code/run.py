@@ -59,7 +59,7 @@ parser.add_argument('-save_visual', type=bool, default=True)
 parser.add_argument('-save_losses', type=bool, default=True)
 parser.add_argument('-save_mesh', type=bool, default=True)
 parser.add_argument('-load_model', type=bool, default=True)
-parser.add_argument('-model_file', type=none_or_str, default=None)
+parser.add_argument('-model_file', type=str, default='')
 
 parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
@@ -113,6 +113,7 @@ def main():
     )
     # Initialize Model
     model = MultiScaleAutoEncoder(args)
+    
     model_path = os.path.join(args.save_model_dir , args.model_file)
     if args.load_model and os.path.isfile(model_path):
         model.load_state_dict(torch.load(model_path))
