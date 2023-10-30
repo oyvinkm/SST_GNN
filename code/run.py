@@ -82,8 +82,10 @@ parser.add_argument('-num_workers', type=int, default=1)
 parser.add_argument('-num_layers', type=int, default=2)
 parser.add_argument('-out_feature_dim', type=none_or_int, default=None)
 parser.add_argument('-latent_dim', type=none_or_int, default=None)
+parser.add_argument('-progress_bar', type=bool, default=False)
 args = parser.parse_args()
 logger.debug(f"args = \n{args}")
+
 
 def main():
     #args.transform = 'Attribute'
@@ -109,7 +111,6 @@ def main():
         dataset[0].num_features,
         dataset[0].edge_attr.shape[1],
     )
-    args.model_file = 'model_2023_10_26-13.20.pt'
     # Initialize Model
     model = MultiScaleAutoEncoder(args)
     model_path = os.path.join(args.save_model_dir , args.model_file)

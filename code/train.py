@@ -113,14 +113,17 @@ def train(model, train_loader, val_loader, optimizer, args):
     best_model = None
 
     manager = enlighten.get_manager()
-    epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
+    if args.progress_bar:
+        epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
     for epoch in range(args.epochs):
-        epochs.update()
+        if args.progress_bar:
+            epochs.update()
         total_loss = 0
         batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         model.train()
         for idx, batch in enumerate(train_loader):
-            batch_counter.update()
+            if args.progress_bar:
+                batch_counter.update()
             # data = transform(batch).to(args.device)
             # Note that normalization must be done before it's called. The unnormalized
             # data needs to be preserved in order to correctly calculate the loss
@@ -136,7 +139,8 @@ def train(model, train_loader, val_loader, optimizer, args):
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
-        batch_counter.close()
+        if args.progree_bar:
+            batch_counter.close()
         logger.debug(f'Len loader: {len(train_loader)}')
         logger.debug(f"Index : {idx}")
         total_loss /= len(train_loader)
@@ -162,5 +166,6 @@ def train(model, train_loader, val_loader, optimizer, args):
             logger.info(f"Loss Epoch_{epoch}:\n\
                         Training Loss : {round(train_losses[-1], 4)}\n\
                         Validation Loss : {round(val_losses[-1], 4)}")
-
+    if args.progress_bar:
+        epoch.stop()
     return train_losses, val_losses, best_model
