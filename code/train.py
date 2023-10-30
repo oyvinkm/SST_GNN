@@ -47,6 +47,10 @@ def save_mesh(pred, truth, idx, args):
 
 @torch.no_grad()
 def validate(model, val_loader, loss_func, epoch, args):
+    """
+    Performs a validation run on our current model with the validationset
+    saved in the val_loader.
+    """
     total_loss = 0
     model.eval()
     for idx, batch in enumerate(val_loader):
@@ -68,6 +72,10 @@ def validate(model, val_loader, loss_func, epoch, args):
 
 @torch.no_grad()
 def test(model, test_loader, loss_func, args):
+    """
+    Performs a test run on our final model with the test
+    saved in the test_loader.
+    """
     if loss_func is None:
         loss_func = MSELoss()
     total_loss = 0

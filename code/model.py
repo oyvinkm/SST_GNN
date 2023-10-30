@@ -132,6 +132,7 @@ class MultiScaleAutoEncoder(nn.Module):
 class MessagePassingLayer(torch.nn.Module):
     """
     Kinda like a U-Net but with Message Passing Blocks.
+    The Multiscale Autoencoder consists of multiple of these
     """
 
     def __init__(self, args):

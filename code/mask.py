@@ -14,7 +14,7 @@ def filter_adj(
 ) -> Tuple[Tensor, Tensor, OptTensor]:
     return row[mask], col[mask], None if edge_attr is None else edge_attr[mask]
 
-
+# Edgemasking, better than the "Edge_Mask" defined further down
 def dropout_adj(
     edge_index: Tensor,
     edge_attr: OptTensor = None,

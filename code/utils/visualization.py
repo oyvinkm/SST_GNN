@@ -15,6 +15,7 @@ import networkx as nx
 from networkx.algorithms import community
 
 def save_plots(args, losses, test_losses, velo_val_losses):
+    """Saves loss plots at args.postprocess_dir"""
     model_name='model_nl'+str(args.num_layers)+'_bs'+str(args.batch_size) + \
                '_hd'+str(args.hidden_dim)+'_ep'+str(args.epochs)+'_wd'+str(args.weight_decay) + \
                '_lr'+str(args.lr)+'_shuff_'+str(args.shuffle)+'_tr'+str(args.train_size)+'_te'+str(args.test_size)
@@ -28,8 +29,7 @@ def save_plots(args, losses, test_losses, velo_val_losses):
     plt.title('Losses Plot')
     plt.plot(losses, label="training loss" + " - " + args.model_type)
     plt.plot(test_losses, label="test loss" + " - " + args.model_type)
-    #if (args.save_velo_val):
-    #    plt.plot(velo_val_losses, label="velocity loss" + " - " + args.model_type)
+
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
 
@@ -42,8 +42,8 @@ def save_plots(args, losses, test_losses, velo_val_losses):
 
 def make_animation(gs, path, name , skip = 2, save_anim = True, plot_variables = False):
     '''
+    The function creates a gif of our trajectory given at gs at path+name_anim.gif
     input gs is a dataloader and each entry contains attributes of many timesteps.
-
     '''
     print('Generating velocity fields...')
     fig, ax = plt.subplots(1, 1, figsize=(20, 16))
@@ -103,7 +103,7 @@ def make_animation(gs, path, name , skip = 2, save_anim = True, plot_variables =
 
 def visualize(loader, best_model, file_dir, args, gif_name, stats_list,
               delta_t = 0.01, skip = 1):
-
+    """Visualizes the result of our best model."""
     best_model.eval()
     device = args.device
     viz_data = {}
@@ -136,6 +136,7 @@ def visualize(loader, best_model, file_dir, args, gif_name, stats_list,
     return eval_data_loader
 
 def draw_graph(g, save = False, args = None):
+  """Draws the graph given"""
   G = to_networkx(g, to_undirected=True)
   pos = nx.spring_layout(G, seed=42)
   cent = nx.degree_centrality(G)
@@ -160,6 +161,7 @@ def draw_graph(g, save = False, args = None):
 
 @torch.no_grad()
 def plot_mesh(gs, title = None, args = None):
+  """plots the graph as a mesh"""
   fig, ax = plt.subplots(1, 1, figsize=(20, 16))
   bb_min = gs.x[:, 0:2].min() # first two columns are velocity
   bb_max = gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
@@ -196,6 +198,10 @@ def plot_mesh(gs, title = None, args = None):
 
 @torch.no_grad()
 def plot_dual_mesh(pred_gs, true_gs, title = None, args = None):
+    """
+    Plots two graphs with each other. 
+    Can be used to plot the predicted graph and the ground truth
+    """
     fig, axes = plt.subplots(2, 1, figsize=(20, 16))
     bb_min = pred_gs.x[:, 0:2].min() # first two columns are velocity
     bb_max = pred_gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
