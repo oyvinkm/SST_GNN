@@ -82,7 +82,7 @@ parser.add_argument('-num_workers', type=int, default=1)
 parser.add_argument('-num_layers', type=int, default=2)
 parser.add_argument('-out_feature_dim', type=none_or_int, default=None)
 parser.add_argument('-latent_dim', type=none_or_int, default=None)
-parser.add_argument('-progress_bar', type=bool, default=False)
+parser.add_argument('-progress_bar', type=bool, default=True)
 args = parser.parse_args()
 logger.debug(f"args = \n{args}")
 

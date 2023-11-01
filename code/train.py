@@ -126,8 +126,8 @@ def train(model, train_loader, val_loader, optimizer, args):
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
+            batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         total_loss = 0
-        batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         model.train()
         for idx, batch in enumerate(train_loader):
             if args.progress_bar:
@@ -137,9 +137,9 @@ def train(model, train_loader, val_loader, optimizer, args):
             # data needs to be preserved in order to correctly calculate the loss
             batch = batch.to(args.device)
             logger.debug(f'batch : {batch}')
-            logger.debug(f'Data before transformation, true mean : {np.sum(batch.x.detach().numpy())}, transformed mean : {np.sum(batch.x.detach().numpy())} ')
+            logger.debug(f'Data before transformation, true mean : {np.sum(batch.x.detach().cpu().numpy())}, transformed mean : {np.sum(batch.x.detach().cpu().numpy())} ')
             b_data = transform_batch(batch, args)
-            logger.debug(f'Data transformed, true mean : {np.mean(batch.x.detach().numpy())}, transformed mean : {np.mean(b_data.x.detach().numpy())} ')
+            logger.debug(f'Data transformed, true mean : {np.mean(batch.x.detach().cpu().numpy())}, transformed mean : {np.mean(b_data.x.detach().cpu().numpy())} ')
             optimizer.zero_grad()  # zero gradients each time
             pred, _ = model(b_data)
             # NOTE: Does the loss have to be a function in the model?
@@ -147,7 +147,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
-        if args.progree_bar:
+        if args.progress_bar:
             batch_counter.close()
         logger.debug(f'Len loader: {len(train_loader)}')
         logger.debug(f"Index : {idx}")
