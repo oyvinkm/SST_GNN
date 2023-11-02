@@ -1,0 +1,30 @@
+DOESN'T WORK YET!!
+
+Make sure we have opened Cisco anyconnect secure mobility client and conncected to KU
+Open Powershell
+ssh hendrix
+*type KU-password*
+
+Loading packages
+module avail # to check viable modules
+module load anaconda3/2023.03-py3.10
+module load cuda/11.8
+load 
+
+
+We are using cuda 11.8
+conda create --name cluster
+conda init bash
+*restart your shell*
+conda activate cluster
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+pip insatll loguru
+pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
+pip install matplotlib
+pip install enlighten
+
+
+pip install -U scikit-learn
+
+Issues:
