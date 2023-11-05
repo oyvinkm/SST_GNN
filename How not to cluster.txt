@@ -1,28 +1,3 @@
-DOESN'T WORK YET!!
-
-Make sure we have opened Cisco anyconnect secure mobility client and conncected to KU
-Open Powershell
-ssh hendrix
-*type KU-password*
-
-THIS MIGHT WORK
-module load anaconda3/2022.10
-module load cuda/11.6
-conda create --name cluster
-conda init bash
-*restart your shell*
-conda activate cluster
-conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.6 -c pytorch -c nvidia
-pip install torch_geometric -f https://data.pyg.org/whl/torch-1.13.1%2Bcu116.html
-pip install pyg_lib -f https://data.pyg.org/whl/torch-1.13.1%2Bcu116.html
-conda install pytorch-scatter -c pyg
-pip install loguru
-pip install enlighten
-pip install matplotlib
-pip install networkx
-
-____________________________________________
-
 
 Loading packages
 module avail # to check viable modules
