@@ -44,8 +44,8 @@ def train(model, train_loader, val_loader, optimizer, args):
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
+            batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         total_loss = 0
-        batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         model.train()
         for idx, batch in enumerate(train_loader):
             if args.progress_bar:
