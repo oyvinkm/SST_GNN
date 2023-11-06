@@ -1,7 +1,7 @@
 """
     This file contains the classes used to build our Multi Scale Auto Encoder GNN.
 """
-
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential
@@ -9,6 +9,8 @@ from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
 from torch_scatter import scatter
+from loguru import logger
+
 
 
 class MultiScaleAutoEncoder(nn.Module):
@@ -39,32 +41,35 @@ class MultiScaleAutoEncoder(nn.Module):
             self.latent_dim = args.hidden_dim
         else:
             self.latent_dim = args.latent_dim
+        self.latent_vec_dim = args.latent_vec_dim
         self.args = args
         self.down_layers = nn.ModuleList()
         self.up_layers = nn.ModuleList()
         self.down_pool = nn.ModuleList()
         self.up_pool = nn.ModuleList()
 
-        for _ in range(self.ae_layers):
+        for i in range(self.ae_layers):
             self.down_layers.append(MessagePassingLayer(args=self.args))
-            self.up_layers.append(MessagePassingLayer(args=self.args))
+            if i == 0:
+                self.up_layers.append(MessagePassingLayer(args=self.args, first_up=True))
+            else:
+                self.up_layers.append(MessagePassingLayer(args=self.args))
             self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
             self.up_pool.append(Unpool())
-
-        self.bottom_layer = MessagePassingLayer(args=self.args)
+        self.bottom_layer = MessagePassingLayer(args=self.args, bottom=True)
 
         self.final_layer = MessagePassingLayer(args=self.args)
 
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
             ReLU(),
-            Linear(self.hidden_dim, self.latent_dim),
-            LayerNorm(self.latent_dim),
+            Linear(self.hidden_dim, self.hidden_dim),
+            LayerNorm(self.hidden_dim),
         )
         self.out_node_decoder = Sequential(
-            Linear(self.latent_dim, self.latent_dim // 2),
+            Linear(self.hidden_dim, self.hidden_dim // 2),
             ReLU(),
-            Linear(self.latent_dim // 2, self.out_feature_dim),
+            Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
         )
 
@@ -74,6 +79,16 @@ class MultiScaleAutoEncoder(nn.Module):
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
+
+        self.linear_down_mpl = Sequential(Linear(self.latent_vec_dim, 64),
+                        ReLU(),
+                         #LayerNorm(64),
+                         Linear(64, 1))
+        self.linear_up_mpl = Sequential(Linear(1, 64),
+                                    ReLU(),
+                                    #LayerNorm(64),
+                                    Linear(64, self.latent_vec_dim))
+        self.act = nn.Softmax(dim = 1)
 
     def forward(self, b_data):
         """Forward loop, first encoder, then bottom layer, then decoder"""
@@ -89,6 +104,7 @@ class MultiScaleAutoEncoder(nn.Module):
         bs = []
         b_data.x = x
         b_data.edge_attr = edge_attr
+        # ENCODE
         for i in range(self.ae_layers):
             b_data = self.down_layers[i](b_data)
             batch = b_data.batch
@@ -108,10 +124,19 @@ class MultiScaleAutoEncoder(nn.Module):
             perms.append(perm)
 
         # Do the final MMP before we arrive at G_L
+        # BOTTOM
         b_data = self.bottom_layer(b_data)
         z = b_data.clone()
+        z_x = self.batch_to_dense_transpose(b_data)
+        z_x = self.linear_down_mpl(z_x)
+        z_x = self.linear_up_mpl(z_x)
+        z_x = self.batch_to_sparse(z_x)
+        b_data.x = z_x
+
+        # DECODE
         for i in range(self.ae_layers):
             up_idx = self.ae_layers - i - 1
+            logger.debug(f'Decode: {b_data}')
             x = self.up_layers[i](b_data)
             x = self.up_pool[i](b_data.x, down_outs[up_idx].shape[0], perms[up_idx])
             b_data.weights = ws[up_idx]
@@ -123,8 +148,26 @@ class MultiScaleAutoEncoder(nn.Module):
         x = self.out_node_decoder(b_data.x)
         b_data.x = x
         b_data.edge_attr = in_edge_attr
+        #b_data.x = self.act(b_data.x)
+        #b_data.edge_attr = self.act(b_data.edge_attr)
+        return b_data, z_x  # , edge_attr, edge_index
 
-        return b_data, z  # , edge_attr, edge_index
+    def batch_to_dense_transpose(self, z):
+        count  = np.unique(z.batch, return_counts= True)
+        count = list(zip(count[0], count[1]))
+        b_lst = []
+        for b, len in count:
+            start = b*len
+            end = (b+1)*len 
+            b_lst.append(z.x[start:end].T)
+        batch = torch.stack(b_lst)
+        return batch
+    
+    def batch_to_sparse(self, z):
+        z = z.transpose(1,2)
+        z = z.contiguous().view(-1, self.args.latent_dim)
+        return z
+
     
             
 
@@ -135,15 +178,25 @@ class MessagePassingLayer(torch.nn.Module):
     The Multiscale Autoencoder consists of multiple of these
     """
 
-    def __init__(self, args):
+    def __init__(self, args, bottom = False, first_up = False):
         super(MessagePassingLayer, self).__init__()
         self.hidden_dim = args.hidden_dim
         self.l_n = args.mpl_layers
         self.args = args
-        if args.latent_dim is None:
-            self.latent_dim = args.hidden_dim
+        self.bottom = bottom
+        self.first_up = first_up
+        logger.debug(f'First up: {first_up}')
+        logger.debug(f'Bottom : {bottom}')
+        if args.latent_dim is not None and (bottom or  first_up):
+            if first_up:
+                self.hidden_dim = args.latent_dim
+                self.latent_dim = args.hidden_dim
+            else:
+                self.latent_dim = args.latent_dim
+            logger.debug(f'Hidden dim is {self.hidden_dim}')
+            logger.debug(f'Latent dim is {self.latent_dim}')
         else:
-            self.latent_dim = args.latent_dim
+            self.latent_dim = args.hidden_dim
         self.num_blocks = args.num_blocks
         self.down_gmps = nn.ModuleList()
         self.up_gmps = nn.ModuleList()
@@ -156,12 +209,21 @@ class MessagePassingLayer(torch.nn.Module):
         else:
             self.ae_ratio = self.args.mpl_ratio
 
-        for _ in range(self.l_n):
-            self.down_gmps.append(
-                MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
-            )
+        for i in range(self.l_n):
+            if i == 0 and bottom:
+                self.down_gmps.append(
+                    MessagePassingBlock(hidden_dim=self.hidden_dim, latent_dim = self.latent_dim, args=args)
+                )
+            elif i == 0 and first_up:
+                self.down_gmps.append(
+                    MessagePassingBlock(hidden_dim=self.hidden_dim, latent_dim = self.latent_dim, args=args)
+                )
+            else:
+                self.down_gmps.append(
+                    MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim = self.latent_dim, args=args)
+                )
             self.up_gmps.append(
-                MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
+                MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim=self.latent_dim, args=args)
             )
             self.unpools.append(Unpool())
             if self.args.pool_strat == "ASA":
@@ -171,7 +233,7 @@ class MessagePassingLayer(torch.nn.Module):
                     )
                 )
             else:
-                self.pools.append(TopKPooling(self.hidden_dim, self.ae_ratio))
+                self.pools.append(TopKPooling(self.latent_dim, self.ae_ratio))
 
     def forward(self, b_data):
         """Forward pass through Message Passing Layer"""
@@ -187,12 +249,17 @@ class MessagePassingLayer(torch.nn.Module):
         for i in range(self.l_n):
             h = b_data.x
             g = b_data.edge_index
-            b_data.x = self.down_gmps[i](h, g)
+            h = self.down_gmps[i](h, g)
+            if self.bottom or self.first_up:
+                logger.debug(f'latent dim forward loop: {self.latent_dim}')
+                logger.debug(f'b_data after MPL: {b_data}')
+                logger.debug(f'weights : {b_data.weights.shape}')
             # record the infor before aggregation
             down_outs.append(h)
             down_gs.append(g)
             batches.append(b_data.batch)
             ws.append(b_data.weights)
+            
 
             # aggregate then pooling
             # Calculates edge and node weigths
@@ -202,6 +269,7 @@ class MessagePassingLayer(torch.nn.Module):
             b_data.x = self.edge_conv(h, g, ew)
             # Does edge convolution on position with edge weights
             cts.append(ew)
+            
             if self.args.pool_strat == "ASA":
                 x, edge_index, edge_weight, batch, index = self.pools[i](
                     b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch
@@ -295,19 +363,26 @@ class MessagePassingBlock(torch.nn.Module):
     Just combines n number of message passing layers
     """
 
-    def __init__(self, hidden_dim, args, num_blocks=None):
+    def __init__(self, hidden_dim, args, latent_dim = None, num_blocks=None):
         super(MessagePassingBlock, self).__init__()
         if num_blocks is None:
             self.num_blocks = args.num_blocks
         else:
             self.num_blocks = num_blocks
-
+        self.hidden_dim = hidden_dim
+        if latent_dim is None:
+            self.latent_dim = hidden_dim
+        else:
+            self.latent_dim = latent_dim
         self.processor = nn.ModuleList()
         assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
-
+        
         processor_layer = self.build_processor_model()
-        for _ in range(self.num_blocks):
-            self.processor.append(processor_layer(hidden_dim, hidden_dim))
+        for i in range(self.num_blocks):
+            if i == 0:
+                self.processor.append(processor_layer(self.hidden_dim, self.latent_dim))
+            else:
+                self.processor.append(processor_layer(self.latent_dim, self.latent_dim))
 
     def build_processor_model(self):
         return GCNConv
@@ -348,8 +423,6 @@ class GCNConv(MessagePassing):
         # edge_index has shape [2, E]
 
         # Step 1: Add self-loops to the adjacency matrix.
-        # edge_index = add_self_loops(edge_index, num_nodes=x.size(0))
-        # print(edge_index[0].shape)
         # Step 2: Linearly transform node feature matrix.
         x = self.lin(x)
 

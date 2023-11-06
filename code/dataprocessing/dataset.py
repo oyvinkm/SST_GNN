@@ -22,13 +22,7 @@ class MeshDataset(Dataset):
     self.traj_data = torch.load(self.data_file)
     
     # For normalization, not implemented atm
-    [mean_vec_x,std_vec_x,mean_vec_edge,std_vec_edge,mean_vec_y,std_vec_y] = get_stats(self.traj_data)
-    self.mean_vec_x = mean_vec_x
-    self.std_vec_x = std_vec_x
-    self.mean_vec_edge = mean_vec_edge
-    self.std_vec_edge = std_vec_edge
-    self.mean_vec_y = mean_vec_y
-    self.std_vec_y = std_vec_y
+    self.stats_list = get_stats(self.traj_data)
     #self._cal_multi_mesh()
     super().__init__(self.data_dir)
 

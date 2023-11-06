@@ -21,6 +21,7 @@ from opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
 import argparse
+from sklearn.model_selection import ParameterGrid
 
 # TODO: Set up args so they can be called from config file
 # NOTE: Set args up to take loss function.
@@ -195,5 +196,21 @@ if __name__ == "__main__":
     logger.add(sys.stderr, level=args.logger_lvl)
 
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
-    logger.info(f"CUDA has version: {torch.version.cuda}")  
-    main()
+    logger.info(f"CUDA has version: {torch.version.cuda}")
+    param_grid = {'latent_dim': [256, 512], 
+              'ae_layers': [2, 3], 
+              'pool_strat':['SAG', 'ASA'],
+              'lr': [0.001, 0.0001],
+              'pooling_ratio': [0.3, 0.5],
+              'loss': ['RMSE', 'not rmse']
+              }
+    lst = list(ParameterGrid(param_grid))
+    for ele in lst:
+        args.logger_lvl = "INFO"
+        name = ""
+        for key in ele.keys():
+            args.__dict__[key] = ele[key]
+            name += key+":"+str(ele[key])+'-'
+        args.time_stamp = name
+        logger.info(f"Doing the following config: {args.time_stamp}")
+        main()
