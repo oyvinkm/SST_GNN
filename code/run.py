@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Main file for running setup, training and testing"""
+import math
 import os
 import random
 import sys
@@ -60,11 +61,11 @@ parser.add_argument('-save_losses', type=bool, default=True)
 parser.add_argument('-save_mesh', type=bool, default=True)
 parser.add_argument('-load_model', type=bool, default=True)
 parser.add_argument('-model_file', type=str, default='')
-
 parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
 parser.add_argument('-mpl_ratio', type=float, default=0.5)
 parser.add_argument('-lr', type=float, default=0.001)
+parser.add_argument('-loss', type=none_or_str, default=None)
 parser.add_argument('-weight_decay', type=float, default=0.0005)
 parser.add_argument('-opt_decay_rate', type=float, default=0.1)
 parser.add_argument('-transform_p', type=float, default=0.1)
@@ -82,9 +83,11 @@ parser.add_argument('-num_workers', type=int, default=1)
 parser.add_argument('-num_layers', type=int, default=2)
 parser.add_argument('-out_feature_dim', type=none_or_int, default=None)
 parser.add_argument('-latent_dim', type=none_or_int, default=None)
-parser.add_argument('-progress_bar', type=bool, default=False)
+parser.add_argument('-progress_bar', type=bool, default=True)
+parser.add_argument('-log_step', type=int, default=10)
+parser.add_argument('-loss_step', type=int, default=10)
 args = parser.parse_args()
-logger.debug(f"args = \n{args}")
+
 
 
 def main():
@@ -111,6 +114,7 @@ def main():
         dataset[0].num_features,
         dataset[0].edge_attr.shape[1],
     )
+    args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     model = MultiScaleAutoEncoder(args)
     
@@ -129,7 +133,7 @@ def main():
     # Split training data into train and validation data
     # TODO: calculate correct val_ratio
     train_data, val_data = train_test_split(train_data, test_size=args.val_ratio / (1 - args.test_ratio))
-
+    logger.debug(f"args = \n{args}")
     logger.info(
         f"\n\tTrain size : {len(train_data)}, \n\
         Validation size : {len(val_data)}, \n\
@@ -140,7 +144,7 @@ def main():
     train_loader = DataLoader(
         train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
-    val_loader = DataLoader(val_data, batch_size=4, shuffle=False)
+    val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
         
     # TRAINING

@@ -4,7 +4,10 @@
 now="$(date +"%y_%m_%d-%H.%M")"
 
 python run.py \
-	-data_dir data/cylinder_flow/  \
+  	-data_dir data/cylinder_flow/  \
+    -loss_step 1 \
+    -log_step 1 \
+    -logger_lvl INFO \
     -instance_id 1 \
     -test_ratio 0.1 \
     -val_ratio 0.1 \
@@ -13,16 +16,18 @@ python run.py \
     -out_feature_dim 11 \
     -epochs 100 \
     -ae_layers 2 \
-    -ae_ratio 0.5 \
+    -ae_ratio 0.3 \
     -hidden_dim 64 \
     -mpl_layers 2 \
     -num_blocks 2 \
-    -latent_dim None \
+    -latent_dim 256 \
     -pool_strat ASA \
     -mpl_ratio 0.5 \
     -opt adam \
     -lr 0.001 \
+    -loss None \
     -weight_decay 0.0005 \
+    -load_model False\
     -opt_decay_step 30 \
     -opt_decay_rate 0.1 \
     -opt_scheduler step \
@@ -41,6 +46,6 @@ python run.py \
     -save_visual True \
     -save_losses True \
     -save_mesh True \
-    -logger_lvl DEBUG \
     -num_layers 2 \
-    -time_stamp $now
+    -time_stamp $now \
+    -progress_bar True 

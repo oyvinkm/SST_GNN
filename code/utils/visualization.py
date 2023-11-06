@@ -203,8 +203,8 @@ def plot_dual_mesh(pred_gs, true_gs, title = None, args = None):
     Can be used to plot the predicted graph and the ground truth
     """
     fig, axes = plt.subplots(2, 1, figsize=(20, 16))
-    bb_min = pred_gs.x[:, 0:2].min() # first two columns are velocity
-    bb_max = pred_gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
+    bb_min = true_gs.x[:, 0:2].min() # first two columns are velocity
+    bb_max = true_gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
                                         # gs and prediction plots
 
     for idx, ax in enumerate(axes):
@@ -217,6 +217,7 @@ def plot_dual_mesh(pred_gs, true_gs, title = None, args = None):
             pos = true_gs.mesh_pos
             faces = true_gs.cells
             velocity = true_gs.x[:, 0:2]
+            
             title = 'Ground Truth'
 
         ax.cla()
