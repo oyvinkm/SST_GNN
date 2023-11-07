@@ -5,26 +5,20 @@ Open Powershell
 ssh hendrix
 *type KU-password*
 
-Loading packages
-module avail # to check viable modules
-module load anaconda3/2023.03-py3.10
-module load cuda/11.8
-load 
-
-
-We are using cuda 11.8
+THIS MIGHT WORK
+module load anaconda3/2022.10
+module load cuda/11.6
 conda create --name cluster
 conda init bash
 *restart your shell*
 conda activate cluster
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-pip insatll loguru
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
-pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
-pip install matplotlib
+conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.6 -c pytorch -c nvidia
+pip install torch_geometric -f https://data.pyg.org/whl/torch-1.13.1%2Bcu116.html
+pip install pyg_lib -f https://data.pyg.org/whl/torch-1.13.1%2Bcu116.html
+conda install pytorch-scatter -c pyg
+pip install loguru
 pip install enlighten
+pip install matplotlib
+pip install networkx
 
-
-pip install -U scikit-learn
-
-Issues:
+____________________________________________
