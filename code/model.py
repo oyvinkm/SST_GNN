@@ -4,7 +4,7 @@
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import LayerNorm, Linear, ReLU, Sequential
+from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
@@ -62,30 +62,30 @@ class MultiScaleAutoEncoder(nn.Module):
 
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
-            ReLU(),
+            LeakyReLU(),
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
         self.out_node_decoder = Sequential(
             Linear(self.hidden_dim, self.hidden_dim // 2),
-            ReLU(),
+            LeakyReLU(),
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
         )
 
         self.edge_encoder = Sequential(
             Linear(self.in_dim_edge, self.hidden_dim),
-            ReLU(),
+            LeakyReLU(),
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
 
         self.linear_down_mpl = Sequential(Linear(self.latent_vec_dim, 64),
-                        ReLU(),
+                        LeakyReLU(),
                          #LayerNorm(64),
                          Linear(64, 1))
         self.linear_up_mpl = Sequential(Linear(1, 64),
-                                    ReLU(),
+                                    LeakyReLU(),
                                     #LayerNorm(64),
                                     Linear(64, self.latent_vec_dim))
         self.act = nn.Softmax(dim = 1)
@@ -153,7 +153,7 @@ class MultiScaleAutoEncoder(nn.Module):
         return b_data, z_x  # , edge_attr, edge_index
 
     def batch_to_dense_transpose(self, z):
-        count  = np.unique(z.batch, return_counts= True)
+        count  = np.unique(z.batch.cpu(), return_counts= True)
         count = list(zip(count[0], count[1]))
         b_lst = []
         for b, len in count:

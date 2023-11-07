@@ -62,10 +62,10 @@ parser.add_argument('-save_losses', type=bool, default=True)
 parser.add_argument('-save_mesh', type=bool, default=True)
 parser.add_argument('-load_model', type=bool, default=True)
 parser.add_argument('-model_file', type=str, default='')
-parser.add_argument('-test_ratio', type=float, default=0.2)
+parser.add_argument('-test_ratio', type=float, default=0.1)
 parser.add_argument('-val_ratio', type=float, default=0.1)
 parser.add_argument('-mpl_ratio', type=float, default=0.5)
-parser.add_argument('-lr', type=float, default=0.001)
+parser.add_argument('-lr', type=float, default=0.0001)
 parser.add_argument('-loss', type=none_or_str, default=None)
 parser.add_argument('-weight_decay', type=float, default=0.0005)
 parser.add_argument('-opt_decay_rate', type=float, default=0.1)
@@ -73,7 +73,7 @@ parser.add_argument('-transform_p', type=float, default=0.1)
 parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-batch_size', type=int, default=16)
-parser.add_argument('-epochs', type=int, default=40)
+parser.add_argument('-epochs', type=int, default=2)
 parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-hidden_dim', type=int, default=64)
 parser.add_argument('-mpl_layers', type=int, default=2)
@@ -84,7 +84,7 @@ parser.add_argument('-num_workers', type=int, default=1)
 parser.add_argument('-num_layers', type=int, default=2)
 parser.add_argument('-out_feature_dim', type=none_or_int, default=None)
 parser.add_argument('-latent_dim', type=none_or_int, default=None)
-parser.add_argument('-progress_bar', type=bool, default=True)
+parser.add_argument('-progress_bar', type=bool, default=False)
 parser.add_argument('-log_step', type=int, default=10)
 parser.add_argument('-loss_step', type=int, default=10)
 args = parser.parse_args()
@@ -118,7 +118,6 @@ def main():
     args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     model = MultiScaleAutoEncoder(args)
-    
     model_path = os.path.join(args.save_model_dir , args.model_file)
     if args.load_model and os.path.isfile(model_path):
         model.load_state_dict(torch.load(model_path))
@@ -145,19 +144,19 @@ def main():
     train_loader = DataLoader(
         train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
+
     val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
         
     # TRAINING
 
-    train_losses, val_losses, model = train(
+    train_losses, val_losses, _ = train(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
         args=args,
     )
-
     if args.save_plot:
         loss_name = "loss_" + args.time_stamp
         if not os.path.isdir(args.save_plot_dir):
@@ -170,8 +169,7 @@ def main():
             val_label="Validation Loss",
             PATH=PATH,
         )
-
-    test_loss = test(model=model, test_loader=test_loader, loss_func=None, args=args)
+    test_loss = test(model=model, test_loader=test_loader, args=args)
     logger.debug(test_loss)
 
 
@@ -200,7 +198,6 @@ if __name__ == "__main__":
     param_grid = {'latent_dim': [256, 512], 
               'ae_layers': [2, 3], 
               'pool_strat':['SAG', 'ASA'],
-              'lr': [0.001, 0.0001],
               'pooling_ratio': [0.3, 0.5],
               'loss': ['RMSE', 'not rmse']
               }
@@ -210,7 +207,7 @@ if __name__ == "__main__":
         name = ""
         for key in ele.keys():
             args.__dict__[key] = ele[key]
-            name += key+":"+str(ele[key])+'-'
-        args.time_stamp = name
+            name += key+"-"+str(ele[key])+'_'
+        args.time_stamp += name
         logger.info(f"Doing the following config: {args.time_stamp}")
         main()
