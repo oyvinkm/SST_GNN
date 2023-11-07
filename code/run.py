@@ -44,6 +44,7 @@ parser.add_argument('-data_dir', type=str, default='data/cylinder_flow/')
 parser.add_argument('-save_args_dir', type=str, default='args_chkpoints')
 parser.add_argument('-save_visualize_dir', type=str, default='visualizations')
 parser.add_argument('-save_mesh_dir', type=str, default='meshes')
+parser.add_argument('-ae_pool_strat', type=str, default='')
 parser.add_argument('-pool_strat', type=str, default='ASA')
 parser.add_argument('-opt', type=str, default='adam')
 parser.add_argument('-opt_scheduler', type=str, default='step')
@@ -170,7 +171,7 @@ def main():
             PATH=PATH,
         )
 
-    test_loss = test(model=model, test_loader=test_loader, loss_func=None, args=args)
+    test_loss = test(model=model, test_loader=test_loader, args=args)
     logger.debug(test_loss)
 
 

@@ -90,7 +90,8 @@ def train(model, train_loader, val_loader, optimizer, args):
                         Training Loss : {round(train_losses[-1], 4)}\n\
                         Validation Loss : {round(val_losses[-1], 4)}")
     if args.progress_bar:
-        epochs.stop()
+        epochs.close()
+        manager.stop()
     return train_losses, val_losses, best_model
 
 @torch.no_grad()
@@ -128,7 +129,7 @@ def test(model, test_loader, args):
     if args.loss == 'RMSE':
         loss_func = RMSLELoss()
     else:
-        loss_func = MSELoss()
+        loss_func = MSELoss(reduction='mean')
     total_loss = 0
     model.eval()
     for idx, batch in enumerate(test_loader):
@@ -192,6 +193,7 @@ class RMSLELoss(nn.Module):
     def __init__(self):
         super().__init__()
         self.mse = nn.MSELoss()
+        self.eps = 1e-7
         
     def forward(self, pred, actual):
-        return torch.sqrt(self.mse(torch.log(pred + 1), torch.log(actual + 1)))
+        return torch.sqrt(self.mse(torch.log(pred + 1+ self.eps), torch.log(actual + 1 + self.eps)))

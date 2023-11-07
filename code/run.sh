@@ -15,19 +15,20 @@ python run.py \
     -batch_size 16 \
     -out_feature_dim 11 \
     -epochs 100 \
-    -ae_layers 2 \
+    -ae_layers 4 \
     -ae_ratio 0.3 \
     -hidden_dim 64 \
-    -mpl_layers 2 \
+    -mpl_layers 3 \
     -num_blocks 2 \
     -latent_dim 256 \
-    -pool_strat ASA \
+    -ae_pool_strat SAG \
+    -pool_strat SAG \
     -mpl_ratio 0.5 \
     -opt adam \
-    -lr 0.001 \
+    -lr 1e-5 \
     -loss None \
     -weight_decay 0.0005 \
-    -load_model False\
+    -load_model True\
     -opt_decay_step 30 \
     -opt_decay_rate 0.1 \
     -opt_scheduler step \
@@ -35,7 +36,9 @@ python run.py \
     -num_workers 1 \
     -shuffle True \
     -transform None \
-    -transform_p 0.1 \
+    -transform_p 0.2 \
+    -load_model True \
+    -model_file model_23_11_07-10.54.pt \
     -save_model_dir model_chkpoints \
     -save_plot_dir plots \
     -save_plot True \
