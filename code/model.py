@@ -47,14 +47,24 @@ class MultiScaleAutoEncoder(nn.Module):
         self.up_layers = nn.ModuleList()
         self.down_pool = nn.ModuleList()
         self.up_pool = nn.ModuleList()
-
+        self.pool = self._pooling_strategy()
         for i in range(self.ae_layers):
             self.down_layers.append(MessagePassingLayer(args=self.args))
             if i == 0:
                 self.up_layers.append(MessagePassingLayer(args=self.args, first_up=True))
             else:
                 self.up_layers.append(MessagePassingLayer(args=self.args))
-            self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
+            if self.args.ae_pool_strat == "ASA":
+                self.down_pool.append(
+                    self.pool(
+                        in_channels=self.hidden_dim, ratio=self.ae_ratio, GNN=GraphConv
+                    )
+                )
+            else:
+                self.down_pool.append(
+                    self.pool(self.hidden_dim, self.ae_ratio)
+                )
+            #self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
             self.up_pool.append(Unpool())
         self.bottom_layer = MessagePassingLayer(args=self.args, bottom=True)
 
@@ -168,7 +178,14 @@ class MultiScaleAutoEncoder(nn.Module):
         z = z.contiguous().view(-1, self.args.latent_dim)
         return z
 
-    
+    def _pooling_strategy(self):
+        if self.args.pool_strat == "ASA":
+            pool = ASAPooling
+        elif self.args.pool_strat == "SAG":
+            pool = SAGPooling
+        else:
+            pool = TopKPooling
+        return pool
             
 
 
@@ -204,10 +221,11 @@ class MessagePassingLayer(torch.nn.Module):
         self.bottom_gmp = MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
         self.edge_conv = WeightedEdgeConv()
         self.pools = nn.ModuleList()
+        self.pool = self._pooling_strategy()
         if self.args.mpl_ratio is None:
-            self.ae_ratio = 0.5
+            self.mpl_ratio = 0.5
         else:
-            self.ae_ratio = self.args.mpl_ratio
+            self.mpl_ratio = self.args.mpl_ratio
 
         for i in range(self.l_n):
             if i == 0 and bottom:
@@ -228,12 +246,14 @@ class MessagePassingLayer(torch.nn.Module):
             self.unpools.append(Unpool())
             if self.args.pool_strat == "ASA":
                 self.pools.append(
-                    ASAPooling(
-                        in_channels=self.latent_dim, ratio=self.ae_ratio, GNN=GraphConv
+                    self.pool(
+                        in_channels=self.latent_dim, ratio=self.mpl_ratio, GNN=GraphConv
                     )
                 )
             else:
-                self.pools.append(TopKPooling(self.latent_dim, self.ae_ratio))
+                self.pools.append(
+                    self.pool(self.latent_dim, self.mpl_ratio)
+                )
 
     def forward(self, b_data):
         """Forward pass through Message Passing Layer"""
@@ -309,9 +329,9 @@ class MessagePassingLayer(torch.nn.Module):
         return b_data
 
     def _pooling_strategy(self):
-        if self.args.pool_strat == "ASA":
+        if self.args.ae_pool_strat == "ASA":
             pool = ASAPooling
-        elif self.args.pool_strat == "SAG":
+        elif self.args.ae_pool_strat == "SAG":
             pool = SAGPooling
         else:
             pool = TopKPooling
