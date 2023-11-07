@@ -45,7 +45,8 @@ parser.add_argument('-data_dir', type=str, default='data/cylinder_flow/')
 parser.add_argument('-save_args_dir', type=str, default='args_chkpoints')
 parser.add_argument('-save_visualize_dir', type=str, default='visualizations')
 parser.add_argument('-save_mesh_dir', type=str, default='meshes')
-parser.add_argument('-pool_strat', type=str, default='ASA')
+parser.add_argument('-ae_pool_strat', type=str, default='')
+parser.add_argument('-pool_strat', type=str, default='SAG')
 parser.add_argument('-opt', type=str, default='adam')
 parser.add_argument('-opt_scheduler', type=str, default='step')
 parser.add_argument('-save_model_dir', type=str, default='model_chkpoints')
@@ -62,18 +63,18 @@ parser.add_argument('-save_losses', type=bool, default=True)
 parser.add_argument('-save_mesh', type=bool, default=True)
 parser.add_argument('-load_model', type=bool, default=True)
 parser.add_argument('-model_file', type=str, default='')
-parser.add_argument('-test_ratio', type=float, default=0.1)
+parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
 parser.add_argument('-mpl_ratio', type=float, default=0.5)
-parser.add_argument('-lr', type=float, default=0.0001)
-parser.add_argument('-loss', type=none_or_str, default=None)
+parser.add_argument('-lr', type=float, default=0.001)
+parser.add_argument('-loss', type=none_or_str, default="MSE")
 parser.add_argument('-weight_decay', type=float, default=0.0005)
 parser.add_argument('-opt_decay_rate', type=float, default=0.1)
 parser.add_argument('-transform_p', type=float, default=0.1)
 parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-batch_size', type=int, default=16)
-parser.add_argument('-epochs', type=int, default=2)
+parser.add_argument('-epochs', type=int, default=10)
 parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-hidden_dim', type=int, default=64)
 parser.add_argument('-mpl_layers', type=int, default=2)
@@ -199,7 +200,7 @@ if __name__ == "__main__":
               'ae_layers': [2, 3], 
               'pool_strat':['SAG', 'ASA'],
               'pooling_ratio': [0.3, 0.5],
-              'loss': ['RMSE', 'not rmse']
+            #   'loss': ['RMSE', 'MSE']
               }
     lst = list(ParameterGrid(param_grid))
     for ele in lst:
@@ -208,6 +209,7 @@ if __name__ == "__main__":
         for key in ele.keys():
             args.__dict__[key] = ele[key]
             name += key+"-"+str(ele[key])+'_'
-        args.time_stamp += name
         logger.info(f"Doing the following config: {args.time_stamp}")
+        args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
+        args.time_stamp += name
         main()

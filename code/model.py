@@ -179,9 +179,9 @@ class MultiScaleAutoEncoder(nn.Module):
         return z
 
     def _pooling_strategy(self):
-        if self.args.pool_strat == "ASA":
+        if self.args.ae_pool_strat == "ASA":
             pool = ASAPooling
-        elif self.args.pool_strat == "SAG":
+        elif self.args.ae_pool_strat == "SAG":
             pool = SAGPooling
         else:
             pool = TopKPooling
@@ -329,9 +329,9 @@ class MessagePassingLayer(torch.nn.Module):
         return b_data
 
     def _pooling_strategy(self):
-        if self.args.ae_pool_strat == "ASA":
+        if self.args.pool_strat == "ASA":
             pool = ASAPooling
-        elif self.args.ae_pool_strat == "SAG":
+        elif self.args.pool_strat == "SAG":
             pool = SAGPooling
         else:
             pool = TopKPooling

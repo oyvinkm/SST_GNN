@@ -128,7 +128,7 @@ def test(model, test_loader, args):
     """
     if args.loss == 'RMSE':
         loss_func = RMSLELoss()
-    else:
+    elif args.loss == 'MSE':
         loss_func = MSELoss(reduction='mean')
     total_loss = 0
     model.eval()
