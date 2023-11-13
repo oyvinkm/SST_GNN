@@ -29,7 +29,7 @@ def save_plots(args, losses, test_losses, velo_val_losses):
     plt.title('Losses Plot')
     plt.plot(losses, label="training loss" + " - " + args.model_type)
     plt.plot(test_losses, label="test loss" + " - " + args.model_type)
-
+    plt.grid()
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
 
@@ -215,7 +215,7 @@ def plot_dual_mesh(pred_gs, true_gs, title = None, args = None):
             bb_min = pred_gs.x[:, 0:2].min() # first two columns are velocity
             bb_max = pred_gs.x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
                                         # gs and prediction plots
-            title = 'Prediction'
+            title = 'Reconstruction'
         elif idx == 1:
             pos = true_gs.mesh_pos
             faces = true_gs.cells

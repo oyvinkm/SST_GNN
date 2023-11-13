@@ -51,8 +51,8 @@ parser.add_argument('-opt', type=str, default='adam')
 parser.add_argument('-opt_scheduler', type=str, default='step')
 parser.add_argument('-save_model_dir', type=str, default='model_chkpoints')
 parser.add_argument('-save_plot_dir', type=str, default='plots')
-parser.add_argument('-logger_lvl', type=str, default='INFO')
-parser.add_argument('-transform', type=none_or_str, default=None)
+parser.add_argument('-logger_lvl', type=str, default='SUCCESS')
+parser.add_argument('-transform', type=bool, default=False)
 parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
 parser.add_argument('-normalize', type=bool, default=False)
 parser.add_argument('-shuffle', type=bool, default=True)
@@ -66,7 +66,7 @@ parser.add_argument('-model_file', type=str, default='')
 parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
 parser.add_argument('-mpl_ratio', type=float, default=0.5)
-parser.add_argument('-lr', type=float, default=0.001)
+parser.add_argument('-lr', type=float, default=0.0001)
 parser.add_argument('-loss', type=none_or_str, default="MSE")
 parser.add_argument('-weight_decay', type=float, default=0.0005)
 parser.add_argument('-opt_decay_rate', type=float, default=0.1)
@@ -78,11 +78,10 @@ parser.add_argument('-epochs', type=int, default=10)
 parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-hidden_dim', type=int, default=64)
 parser.add_argument('-mpl_layers', type=int, default=2)
-parser.add_argument('-num_blocks', type=int, default=1)
+parser.add_argument('-num_blocks', type=int, default=2)
 parser.add_argument('-opt_decay_step', type=int, default=30)
 parser.add_argument('-opt_restart', type=int, default=10)
 parser.add_argument('-num_workers', type=int, default=1)
-parser.add_argument('-num_layers', type=int, default=2)
 parser.add_argument('-out_feature_dim', type=none_or_int, default=None)
 parser.add_argument('-latent_dim', type=none_or_int, default=None)
 parser.add_argument('-progress_bar', type=bool, default=False)
@@ -196,20 +195,32 @@ if __name__ == "__main__":
 
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     logger.info(f"CUDA has version: {torch.version.cuda}")
-    param_grid = {'latent_dim': [256, 512], 
-              'ae_layers': [2, 3], 
-              'pool_strat':['SAG', 'ASA'],
-              'pooling_ratio': [0.3, 0.5],
-            #   'loss': ['RMSE', 'MSE']
+
+
+    param_grid = {
+              'loss' : ["LMSE", "MSE"],
+              'latent_dim': [256], 
+              'ae_layers': [3], 
+              'lr' : [1e-5],
+              'mpl_layers' : [1, 2, 3]
               }
     lst = list(ParameterGrid(param_grid))
+    my_bool = args.transform
     for ele in lst:
-        args.logger_lvl = "INFO"
-        name = ""
+        args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
         for key in ele.keys():
             args.__dict__[key] = ele[key]
-            name += key+"-"+str(ele[key])+'_'
-        logger.info(f"Doing the following config: {args.time_stamp}")
-        args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
-        args.time_stamp += name
+            args.time_stamp += "_" + key + "-" + str(ele[key])
+        if args.transform:
+            logger.info("Applying Transformation")
+            args.time_stamp += "transform"
+            args.load_model = True
+            args.model_file = f"model_{args.time_stamp}.pt"
+            logger.success(f"Doing the following config: {args.time_stamp}")
+            main()
+            args.transform = False
+            args.time_stamp += "-Post_transform"
+        logger.success(f"Doing the following config: {args.time_stamp}")
         main()
+        logger.success(f"Done")
+        args.transform = my_bool

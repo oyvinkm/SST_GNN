@@ -62,7 +62,8 @@ class AttributeMask(BaseTransform):
                    converted to 32 bit float
     """
 
-    def __init__(self, p=0.1):
+    def __init__(self, p=0.1, device="cpu"):
+        self.device = device
         self.p = p
 
     def __call__(self, dataobject: Union[Data, HeteroData]) -> Union[Data, HeteroData]:
@@ -70,7 +71,7 @@ class AttributeMask(BaseTransform):
         idx_train = torch.arange(dataobject.x.shape[0])
         nfeat = dataobject.x.shape[1]
         masked_nodes = torch.rand(idx_train.size(0)) <= self.p
-        masked_indicator = torch.zeros(nfeat)
+        masked_indicator = torch.zeros(nfeat).to(self.device)
         dataobject.x[masked_nodes] = masked_indicator
 
         return dataobject
