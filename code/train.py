@@ -28,8 +28,10 @@ def train(model, train_loader, val_loader, optimizer, args):
 
     # train
     # NOTE: Might make dependent on args which loss function
-    if args.loss == 'RMSE':
+    if args.loss == 'RMSLE':
         loss_func = RMSLELoss()
+    elif args.loss == 'LMSE':
+        loss_func = LMSELoss()
     else:
         loss_func = MSELoss()
     logger.debug(f'Loss function: {loss_func}')
@@ -128,7 +130,9 @@ def test(model, test_loader, args):
     """
     if args.loss == 'RMSE':
         loss_func = RMSLELoss()
-    else:
+    elif args.loss == "LMSE":
+        loss_func = LMSELoss()
+    elif args.loss == 'MSE':
         loss_func = MSELoss(reduction='mean')
     total_loss = 0
     model.eval()
@@ -150,8 +154,8 @@ def test(model, test_loader, args):
     return total_loss
 
 def transform_batch(b_data, args):
-    if args.transform == 'Attribute':
-        transforms = T.Compose([AttributeMask(args.transform_p)])
+    if args.transform:
+        transforms = T.Compose([AttributeMask(args.transform_p, args.device)])
         trsfmd = transforms(b_data.clone())
         return trsfmd
     else:
@@ -197,3 +201,11 @@ class RMSLELoss(nn.Module):
         
     def forward(self, pred, actual):
         return torch.sqrt(self.mse(torch.log(pred + 1+ self.eps), torch.log(actual + 1 + self.eps)))
+    
+class LMSELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss()
+    
+    def forward(self, pred, actual):
+        return torch.log(self.mse(pred, actual)+1) # +1 to keep the loss from under 0
