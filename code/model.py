@@ -139,12 +139,18 @@ class MultiScaleAutoEncoder(nn.Module):
             b_data = self._bi_pool_batch(b_data, i)
             logger.info(f'Batch post pooling {i}: {b_data}') """
         b_data, z_x = self.encode(b_data)
+        z_latent = z_x.clone()
+        z_x = self.transform_latent_vec(z_x)
         # BOTTOM
-        logger.info(f'b data post encode: {b_data}')
         # DECODE
-        b_data = self.decode(b_data)
-        return b_data, z_x  
+        b_data = self.decode(b_data, z_x)
+        return b_data, z_latent
     
+    def transform_latent_vec(self, z_x):
+        z_x = self.linear_up_mpl(z_x)
+        z_x = self.batch_to_sparse(z_x)
+        return z_x
+
     def encode(self, b_data):
         for i in range(self.ae_layers):
             b_data = self.down_layers[i](b_data)
@@ -160,14 +166,13 @@ class MultiScaleAutoEncoder(nn.Module):
         #z = b_data.clone()
         z_x = self.batch_to_dense_transpose(b_data)
         z_x = self.linear_down_mpl(z_x)
-        z_x = self.linear_up_mpl(z_x)
-        z_x = self.batch_to_sparse(z_x)
-        b_data.x = z_x
+        logger.info(f'Are you 1d? {z_x.shape}')
         return b_data, z_x
     
-    def decode(self, b_data):
+    def decode(self, b_data, z_x):
+        logger.debug(f'Z_x : {z_x.shape}')
+        b_data.x = z_x
         for i in range(self.ae_layers):
-            logger.debug(f'')
             up_idx = self.ae_layers - i - 1
             logger.info(f'b_data decode {i}: {b_data}')
             b_data = self.up_layers[i](b_data)
