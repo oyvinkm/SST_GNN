@@ -65,10 +65,10 @@ class MultiScaleAutoEncoder(nn.Module):
                                     args=self.args)
                                     )
                     self.up_layers.append(
-                    MessagePassingLayer(hidden_dim = self.hidden_dim * 2, 
-                                        latent_dim = self.hidden_dim, 
-                                        args=self.args)
-                                        )
+                        MessagePassingLayer(hidden_dim = self.hidden_dim * 2, 
+                                            latent_dim = self.hidden_dim, 
+                                            args=self.args)
+                                            )
                 else:
                     self.down_layers.append(
                         MessagePassingLayer(hidden_dim = self.hidden_dim, 
