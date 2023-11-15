@@ -64,6 +64,11 @@ class MultiScaleAutoEncoder(nn.Module):
                                     latent_dim = self.latent_dim, 
                                     args=self.args)
                                     )
+                    self.up_layers.append(
+                    MessagePassingLayer(hidden_dim = self.hidden_dim * 2, 
+                                        latent_dim = self.hidden_dim, 
+                                        args=self.args)
+                                        )
                 else:
                     self.down_layers.append(
                         MessagePassingLayer(hidden_dim = self.hidden_dim, 
@@ -98,6 +103,8 @@ class MultiScaleAutoEncoder(nn.Module):
                 self.down_pool.append(
                     self.pool(self.hidden_dim, self.ae_ratio)
                 )
+            self.residual_MP = MessagePassingBlock(self.latent_dim, self.hidden_dim, self.args)
+            self.residual_unpool = Unpool()  
             #self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
             self.up_pool.append(Unpool())
         self.bottom_layer = MessagePassingLayer(hidden_dim = self.latent_dim, latent_dim = self.latent_dim, args=self.args, bottom=True)
@@ -153,6 +160,7 @@ class MultiScaleAutoEncoder(nn.Module):
         z_x = self.batch_to_sparse(z_x)
         return z_x
 
+
     def encode(self, b_data):
         if self.residual:
             res = self._map_res(b_data.clone().to_data_list())  
@@ -168,8 +176,13 @@ class MultiScaleAutoEncoder(nn.Module):
     
     def decode(self, b_data, z_x):
         b_data.x = z_x
+        res_up = self._res_upsample(b_data, 0)
         for i in range(self.ae_layers):
+            if i == self.ae_layers - 1:
+                b_data = self._residual_connection_up(b_data, res_up)
+                logger.debug(f'post residual: {b_data}')
             up_idx = self.ae_layers - i - 1
+            logger.debug(f'residual layer {self.up_layers[i].hidden_dim} and {self.up_layers[i].latent_dim}')
             b_data = self.up_layers[i](b_data)
             b_lst = b_data.to_data_list()
             batch_lst = []
@@ -186,9 +199,24 @@ class MultiScaleAutoEncoder(nn.Module):
         b_data = self.final_layer(b_data)
         b_data.x = self.out_node_decoder(b_data.x)
         return b_data
-        
 
+    def _residual_connection_up(self, b_data, res_up):
+        b_lst = b_data.clone().to_data_list()
+        for i,d in enumerate(b_lst):
+            d.x = torch.cat((d.x, res_up[i]), dim = 1)
+        return  Batch.from_data_list(b_lst)
+
+    def _res_upsample(self, b_data, i):
+        up_nodes = len(self.m_ids[i])
+        g = torch.tensor(self.m_gs[i + 1]).to(self.args.device)
+        mask = self.m_ids[self.ae_layers - 1]
+        b_lst = b_data.clone().to_data_list()
+        logger.debug(f'Res b_lst : {b_lst}')
+        unpooled = [self.residual_MP(self.residual_unpool(data.x, up_nodes, mask), g) for data in b_lst]
+        return unpooled
+        
     def _residual_connection(self, b_data, res):
+        
         p_lst = b_data.to_data_list()
         for idx, data in enumerate(p_lst):
             data.x = torch.cat((data.x, res[idx]), dim = 1)
@@ -314,7 +342,6 @@ class MessagePassingLayer(torch.nn.Module):
         for i in range(self.l_n):
             h = b_data.x
             g = b_data.edge_index
-            logger.debug(f'X dim MPL down: {h.shape}')
             h = self.down_gmps[i](h, g)
             # record the infor before aggregation
             down_outs.append(h)
