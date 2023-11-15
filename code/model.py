@@ -46,6 +46,7 @@ class MultiScaleAutoEncoder(nn.Module):
         else:
             self.latent_dim = args.latent_dim
         self.latent_vec_dim = len(m_ids[-1])
+        self.n = args.n_nodes
         self.residual = args.residual
         self.args = args
         self.down_layers = nn.ModuleList()
@@ -56,8 +57,8 @@ class MultiScaleAutoEncoder(nn.Module):
         self.b = args.batch_size
         self.pool = self._pooling_strategy()
         for i in range(self.ae_layers):
-            if (i == self.ae_layers - 1) and self.residual:
-                self.down_layers.append(MessagePassing(args=self.args, first_up = True))
+            """ if (i == self.ae_layers - 1) and self.residual:
+                self.down_layers.append(MessagePassing(args=self.args, first_up = True)) """
             self.down_layers.append(MessagePassingLayer(args=self.args))
 
             if i == 0:
@@ -113,21 +114,21 @@ class MultiScaleAutoEncoder(nn.Module):
     def forward(self, b_data):
         """Forward loop, first encoder, then bottom layer, then decoder"""
         x = b_data.x
+        
         edge_attr = b_data.edge_attr
         x = self.node_encoder(x)
-        #h = x.clone()
-        edge_attr = self.edge_encoder(edge_attr)
+        #edge_attr = self.edge_encoder(edge_attr)
         in_edge_attr = b_data.edge_attr
         down_gs = []
         down_outs = []
         self.b = len(torch.unique(b_data.batch))
-        #perms = []
+        n = x.shape[0] // self.b
         ws = []
         bs = []
         b_data.x = x
         b_data.edge_attr = edge_attr
         # ENCODE
-        for i in range(self.ae_layers):
+        """ for i in range(self.ae_layers):
             b_data = self.down_layers[i](b_data)
             batch = b_data.batch
             ws.append(b_data.weights.clone())
@@ -136,74 +137,59 @@ class MultiScaleAutoEncoder(nn.Module):
             down_outs.append(b_data.x.clone())
             down_gs.append(b_data.edge_index.clone())
             b_data = self._bi_pool_batch(b_data, i)
-            logger.info(f'Batch post pooling {i}: {b_data}')
-            """  x, edge_index, edge_attr, batch, perm, _ = self.down_pool[i](
-                b_data.x, b_data.edge_index, b_data.edge_attr, batch
-            )
-            b_data.x = x
-            b_data.edge_index = edge_index
-            b_data.edge_attr = edge_attr
-            b_data.batch = batch
-            b_data.weights = b_data.weights[perm]
-            perms.append(perm) """
-
-        # Do the final MMP before we arrive at G_L
+            logger.info(f'Batch post pooling {i}: {b_data}') """
+        b_data, z_x = self.encode(b_data)
         # BOTTOM
+        logger.info(f'b data post encode: {b_data}')
+        # DECODE
+        b_data = self.decode(b_data)
+        return b_data, z_x  
+    
+    def encode(self, b_data):
+        for i in range(self.ae_layers):
+            b_data = self.down_layers[i](b_data)
+            #batch = b_data.batch
+            #ws.append(b_data.weights.clone())
+            #bs.append(batch.clone())
+
+            #down_outs.append(b_data.x.clone())
+            #down_gs.append(b_data.edge_index.clone())
+            b_data = self._bi_pool_batch(b_data, i)
+            logger.info(f'Batch post pooling {i}: {b_data}')
         b_data = self.bottom_layer(b_data)
-        z = b_data.clone()
+        #z = b_data.clone()
         z_x = self.batch_to_dense_transpose(b_data)
         z_x = self.linear_down_mpl(z_x)
         z_x = self.linear_up_mpl(z_x)
         z_x = self.batch_to_sparse(z_x)
         b_data.x = z_x
-
-        # DECODE
+        return b_data, z_x
+    
+    def decode(self, b_data):
         for i in range(self.ae_layers):
+            logger.debug(f'')
             up_idx = self.ae_layers - i - 1
-            logger.debug(f'b_data decode {i}: {b_data}')
-            #logger.debug(f'Decode: {b_data}')
+            logger.info(f'b_data decode {i}: {b_data}')
             b_data = self.up_layers[i](b_data)
-            #logger.debug(f'Decode 2: {b_data}')
-            #b_lst = b_data.to_data_list()
-
-            #batch_lst = []
-            #g, mask = self.m_gs[up_idx], self.m_ids[up_idx]
-            #up_nodes = down_outs[up_idx].shape[0] // self.b
-            #logger.debug(f'Mask: {len(mask)}')
-            #logger.debug(f'Up_nodes: {up_nodes}')
-            #for idx, data in enumerate(b_lst):
-            #    h = self.unpool(data.x, up_nodes, mask)
-            #    batch_lst.append(Data(x = h, edge_index = g))
             b_lst = b_data.to_data_list()
             batch_lst = []
             g, mask = self.m_gs[up_idx], self.m_ids[up_idx]
+            up_nodes = len(self.m_ids[up_idx - 1]) if up_idx != 0  else self.n
             if not torch.is_tensor(g):
                 g = torch.tensor(g)
             for idx, data in enumerate(b_lst):
-                logger.debug(f'Data.x : {data.x.shape}\nUp nodes = {down_outs[up_idx].shape[0] // self.b}')
-                data.x = self.up_pool[i](data.x, down_outs[up_idx].shape[0] // self.b, mask)
-                data.weights = self.up_pool[i](data.weights, down_outs[up_idx].shape[0] // self.b, mask)
+                data.x = self.up_pool[i](data.x, up_nodes, mask)
+                data.weights = self.up_pool[i](data.weights, up_nodes, mask)
+                data.edge_index = g
                 batch_lst.append(data)
-            b_data = Batch.from_data_list(batch_lst)
-            #b_data = Batch.from_data_list(batch_lst)
-            #b_data = _bi_up_pool_batch(b_data, down_outs, self.m_ids, self.m_gs, self.unpool, up_idx)
-            #b_data.weights = ws[up_idx]
-            #b_data.batch = bs[up_idx]
-            #b_data.x = x
-            #b_data.edge_index = down_gs[up_idx]
+            b_data = Batch.from_data_list(batch_lst).to(self.args.device)
         b_data = self.final_layer(b_data)
         b_data.x = self.out_node_decoder(b_data.x)
-        #b_data.x = x
-        b_data.edge_attr = in_edge_attr
-        #b_data.x = self.act(b_data.x)
-        #b_data.edge_attr = self.act(b_data.edge_attr)
-        return b_data, z_x  # , edge_attr, edge_index
-    
+        return b_data
+        #b_data.edge_attr = in_edge_attr
+
     def _bi_pool_batch(self, b_data, i):
         b_lst = Batch.to_data_list(b_data)
-        #b = len(torch.unique(b_data.batch))
-        #n = b_data.x.shape[-2] // b
-        #w = b_data.weights.reshape(b, n)
         data_lst = []
         if not torch.is_tensor(self.m_gs[i+1]):
             g = torch.tensor(self.m_gs[i+1])
@@ -212,14 +198,10 @@ class MultiScaleAutoEncoder(nn.Module):
             data.x = data.x[mask]
             data.weights = data.weights[mask]
             data.edge_index = g
-            #batch = torch.ones_like(weigth)*idx
-            # edge_idx has to be tensor if not it does not work. 
-            #if not torch.is_tensor(edge_idx):
-            #    edge_idx = torch.tensor(edge_idx) 
             data_lst.append(data)
-        return Batch.from_data_list(data_lst)
+        return Batch.from_data_list(data_lst).to(self.args.device)
     
-    def _bi_up_pool_batch(self, b_data, down_outs, up_idx):
+    """ def _bi_up_pool_batch(self, b_data, down_outs, up_idx):
         #logger.debug(f'Decode up pool {up_idx}: {b_data}')
         b_lst = b_data.to_data_list()
         b = len(torch.unique(b_data.batch))
@@ -231,7 +213,7 @@ class MultiScaleAutoEncoder(nn.Module):
         for idx, data in enumerate(b_lst):
             h = self.unpool(data.x, up_nodes, mask)
             batch_lst.append(Data(x = h, edge_index = g))
-        return Batch.from_data_list(batch_lst)
+        return Batch.from_data_list(batch_lst) """
     
     def batch_to_dense_transpose(self, z):
         count  = np.unique(z.batch.cpu(), return_counts= True)
@@ -243,7 +225,6 @@ class MultiScaleAutoEncoder(nn.Module):
             b_lst.append(z.x[start:end].T)
         batch = torch.stack(b_lst)
         return batch
-    
     
     def batch_to_sparse(self, z):
         z = z.transpose(1,2)
@@ -333,7 +314,7 @@ class MessagePassingLayer(torch.nn.Module):
         ws = []
         b_data.edge_weight = None
         edge_attr = b_data.edge_attr
-
+        b_data.weights = b_data.x.new_ones((b_data.x.shape[-2], 1)) if b_data.weights is None else b_data.weights
         for i in range(self.l_n):
             h = b_data.x
             g = b_data.edge_index
@@ -433,6 +414,8 @@ class WeightedEdgeConv(MessagePassing):
 
     @torch.no_grad()
     def cal_ew(self, w, g):
+        if w is None:
+            w = torch.ones_like()
         deg = degree(g[0], dtype=torch.float, num_nodes=w.shape[0])
         normed_w = w.squeeze(-1) / deg
         i = g[0]
