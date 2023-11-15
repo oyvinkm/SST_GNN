@@ -86,7 +86,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             val_losses.append(val_losses[-1])
 
         if epoch % args.loss_step == 0:
-            logger.info(f"Loss Epoch_{epoch}:\n\
+            logger.success(f"Loss Epoch_{epoch}:\n\
                         Training Loss : {round(train_losses[-1], 4)}\n\
                         Validation Loss : {round(val_losses[-1], 4)}")
     if args.progress_bar:
@@ -142,7 +142,7 @@ def test(model, test_loader, args):
         b_data = transform_batch(batch, args)
         pred, _ = model(b_data)
         if idx == 0 and args.save_mesh:
-            save_mesh(pred, batch, 1, args)
+            save_mesh(pred, batch, 'test', args)
         loss = loss_func(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
 

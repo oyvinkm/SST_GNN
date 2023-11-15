@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+from torch_geometric.data import Batch, Data
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
@@ -23,8 +24,11 @@ class MultiScaleAutoEncoder(nn.Module):
     Decode: G_l -> MPL -> Unpool .... -> MPL -> MLP -> G'_0
     """
 
-    def __init__(self, args):
+    def __init__(self, args, m_ids, m_gs):
         super().__init__()
+        # Bi-Stride Pooling Edges and Node Mask
+        self.m_ids = m_ids
+        self.m_gs = m_gs
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
         if args.out_feature_dim is None:
@@ -41,15 +45,21 @@ class MultiScaleAutoEncoder(nn.Module):
             self.latent_dim = args.hidden_dim
         else:
             self.latent_dim = args.latent_dim
-        self.latent_vec_dim = args.latent_vec_dim
+        self.latent_vec_dim = len(m_ids[-1])
+        self.residual = args.residual
         self.args = args
         self.down_layers = nn.ModuleList()
         self.up_layers = nn.ModuleList()
         self.down_pool = nn.ModuleList()
         self.up_pool = nn.ModuleList()
+        self.unpool = Unpool()
+        self.b = args.batch_size
         self.pool = self._pooling_strategy()
         for i in range(self.ae_layers):
+            if (i == self.ae_layers - 1) and self.residual:
+                self.down_layers.append(MessagePassing(args=self.args, first_up = True))
             self.down_layers.append(MessagePassingLayer(args=self.args))
+
             if i == 0:
                 self.up_layers.append(MessagePassingLayer(args=self.args, first_up=True))
             else:
@@ -105,11 +115,13 @@ class MultiScaleAutoEncoder(nn.Module):
         x = b_data.x
         edge_attr = b_data.edge_attr
         x = self.node_encoder(x)
+        #h = x.clone()
         edge_attr = self.edge_encoder(edge_attr)
         in_edge_attr = b_data.edge_attr
         down_gs = []
         down_outs = []
-        perms = []
+        self.b = len(torch.unique(b_data.batch))
+        #perms = []
         ws = []
         bs = []
         b_data.x = x
@@ -118,12 +130,14 @@ class MultiScaleAutoEncoder(nn.Module):
         for i in range(self.ae_layers):
             b_data = self.down_layers[i](b_data)
             batch = b_data.batch
-            ws.append(b_data.weights)
-            bs.append(batch)
+            ws.append(b_data.weights.clone())
+            bs.append(batch.clone())
 
-            down_outs.append(b_data.x)
-            down_gs.append(b_data.edge_index)
-            x, edge_index, edge_attr, batch, perm, _ = self.down_pool[i](
+            down_outs.append(b_data.x.clone())
+            down_gs.append(b_data.edge_index.clone())
+            b_data = self._bi_pool_batch(b_data, i)
+            logger.info(f'Batch post pooling {i}: {b_data}')
+            """  x, edge_index, edge_attr, batch, perm, _ = self.down_pool[i](
                 b_data.x, b_data.edge_index, b_data.edge_attr, batch
             )
             b_data.x = x
@@ -131,7 +145,7 @@ class MultiScaleAutoEncoder(nn.Module):
             b_data.edge_attr = edge_attr
             b_data.batch = batch
             b_data.weights = b_data.weights[perm]
-            perms.append(perm)
+            perms.append(perm) """
 
         # Do the final MMP before we arrive at G_L
         # BOTTOM
@@ -146,22 +160,79 @@ class MultiScaleAutoEncoder(nn.Module):
         # DECODE
         for i in range(self.ae_layers):
             up_idx = self.ae_layers - i - 1
-            logger.debug(f'Decode: {b_data}')
-            x = self.up_layers[i](b_data)
-            x = self.up_pool[i](b_data.x, down_outs[up_idx].shape[0], perms[up_idx])
-            b_data.weights = ws[up_idx]
-            b_data.batch = bs[up_idx]
-            b_data.x = x
-            b_data.edge_index = down_gs[up_idx]
+            logger.debug(f'b_data decode {i}: {b_data}')
+            #logger.debug(f'Decode: {b_data}')
+            b_data = self.up_layers[i](b_data)
+            #logger.debug(f'Decode 2: {b_data}')
+            #b_lst = b_data.to_data_list()
 
-        x = self.final_layer(b_data)
-        x = self.out_node_decoder(b_data.x)
-        b_data.x = x
+            #batch_lst = []
+            #g, mask = self.m_gs[up_idx], self.m_ids[up_idx]
+            #up_nodes = down_outs[up_idx].shape[0] // self.b
+            #logger.debug(f'Mask: {len(mask)}')
+            #logger.debug(f'Up_nodes: {up_nodes}')
+            #for idx, data in enumerate(b_lst):
+            #    h = self.unpool(data.x, up_nodes, mask)
+            #    batch_lst.append(Data(x = h, edge_index = g))
+            b_lst = b_data.to_data_list()
+            batch_lst = []
+            g, mask = self.m_gs[up_idx], self.m_ids[up_idx]
+            if not torch.is_tensor(g):
+                g = torch.tensor(g)
+            for idx, data in enumerate(b_lst):
+                logger.debug(f'Data.x : {data.x.shape}\nUp nodes = {down_outs[up_idx].shape[0] // self.b}')
+                data.x = self.up_pool[i](data.x, down_outs[up_idx].shape[0] // self.b, mask)
+                data.weights = self.up_pool[i](data.weights, down_outs[up_idx].shape[0] // self.b, mask)
+                batch_lst.append(data)
+            b_data = Batch.from_data_list(batch_lst)
+            #b_data = Batch.from_data_list(batch_lst)
+            #b_data = _bi_up_pool_batch(b_data, down_outs, self.m_ids, self.m_gs, self.unpool, up_idx)
+            #b_data.weights = ws[up_idx]
+            #b_data.batch = bs[up_idx]
+            #b_data.x = x
+            #b_data.edge_index = down_gs[up_idx]
+        b_data = self.final_layer(b_data)
+        b_data.x = self.out_node_decoder(b_data.x)
+        #b_data.x = x
         b_data.edge_attr = in_edge_attr
         #b_data.x = self.act(b_data.x)
         #b_data.edge_attr = self.act(b_data.edge_attr)
         return b_data, z_x  # , edge_attr, edge_index
-
+    
+    def _bi_pool_batch(self, b_data, i):
+        b_lst = Batch.to_data_list(b_data)
+        #b = len(torch.unique(b_data.batch))
+        #n = b_data.x.shape[-2] // b
+        #w = b_data.weights.reshape(b, n)
+        data_lst = []
+        if not torch.is_tensor(self.m_gs[i+1]):
+            g = torch.tensor(self.m_gs[i+1])
+        mask = self.m_ids[i]
+        for idx, data in enumerate(b_lst):
+            data.x = data.x[mask]
+            data.weights = data.weights[mask]
+            data.edge_index = g
+            #batch = torch.ones_like(weigth)*idx
+            # edge_idx has to be tensor if not it does not work. 
+            #if not torch.is_tensor(edge_idx):
+            #    edge_idx = torch.tensor(edge_idx) 
+            data_lst.append(data)
+        return Batch.from_data_list(data_lst)
+    
+    def _bi_up_pool_batch(self, b_data, down_outs, up_idx):
+        #logger.debug(f'Decode up pool {up_idx}: {b_data}')
+        b_lst = b_data.to_data_list()
+        b = len(torch.unique(b_data.batch))
+        batch_lst = []
+        g, mask = self.m_gs[up_idx], self.m_ids[up_idx]
+        up_nodes = down_outs[up_idx].shape[0] // self.b
+        logger.debug(f'Mask: {len(mask)}')
+        logger.debug(f'Up_nodes: {up_nodes}')
+        for idx, data in enumerate(b_lst):
+            h = self.unpool(data.x, up_nodes, mask)
+            batch_lst.append(Data(x = h, edge_index = g))
+        return Batch.from_data_list(batch_lst)
+    
     def batch_to_dense_transpose(self, z):
         count  = np.unique(z.batch.cpu(), return_counts= True)
         count = list(zip(count[0], count[1]))
@@ -173,15 +244,16 @@ class MultiScaleAutoEncoder(nn.Module):
         batch = torch.stack(b_lst)
         return batch
     
+    
     def batch_to_sparse(self, z):
         z = z.transpose(1,2)
         z = z.contiguous().view(-1, self.args.latent_dim)
         return z
 
     def _pooling_strategy(self):
-        if self.args.pool_strat == "ASA":
+        if self.args.ae_pool_strat == "ASA":
             pool = ASAPooling
-        elif self.args.pool_strat == "SAG":
+        elif self.args.ae_pool_strat == "SAG":
             pool = SAGPooling
         else:
             pool = TopKPooling
@@ -202,16 +274,12 @@ class MessagePassingLayer(torch.nn.Module):
         self.args = args
         self.bottom = bottom
         self.first_up = first_up
-        logger.debug(f'First up: {first_up}')
-        logger.debug(f'Bottom : {bottom}')
         if args.latent_dim is not None and (bottom or  first_up):
             if first_up:
                 self.hidden_dim = args.latent_dim
                 self.latent_dim = args.hidden_dim
             else:
                 self.latent_dim = args.latent_dim
-            logger.debug(f'Hidden dim is {self.hidden_dim}')
-            logger.debug(f'Latent dim is {self.latent_dim}')
         else:
             self.latent_dim = args.hidden_dim
         self.num_blocks = args.num_blocks
@@ -271,9 +339,9 @@ class MessagePassingLayer(torch.nn.Module):
             g = b_data.edge_index
             h = self.down_gmps[i](h, g)
             if self.bottom or self.first_up:
-                logger.debug(f'latent dim forward loop: {self.latent_dim}')
+                """ logger.debug(f'latent dim forward loop: {self.latent_dim}')
                 logger.debug(f'b_data after MPL: {b_data}')
-                logger.debug(f'weights : {b_data.weights.shape}')
+                logger.debug(f'weights : {b_data.weights.shape}') """
             # record the infor before aggregation
             down_outs.append(h)
             down_gs.append(g)
@@ -329,9 +397,9 @@ class MessagePassingLayer(torch.nn.Module):
         return b_data
 
     def _pooling_strategy(self):
-        if self.args.ae_pool_strat == "ASA":
+        if self.args.pool_strat == "ASA":
             pool = ASAPooling
-        elif self.args.ae_pool_strat == "SAG":
+        elif self.args.pool_strat == "SAG":
             pool = SAGPooling
         else:
             pool = TopKPooling
@@ -465,3 +533,18 @@ class GCNConv(MessagePassing):
 
         # Step 5: Return new node embeddings.
         return aggr_out
+
+
+def _bi_up_pool_batch(b_data, down_outs, m_ids, m_gs, unpool, up_idx):
+    #logger.debug(f'Decode up pool {up_idx}: {b_data}')
+    b_lst = b_data.to_data_list()
+    b = len(torch.unique(b_data.batch))
+    batch_lst = []
+    g, mask = m_gs[up_idx], m_ids[up_idx]
+    up_nodes = down_outs[up_idx].shape[0] // b
+    logger.debug(f'Mask: {len(mask)}')
+    logger.debug(f'Up_nodes: {up_nodes}')
+    for idx, data in enumerate(b_lst):
+        h = unpool(data.x, up_nodes, mask)
+        batch_lst.append(Data(x = h, edge_index = g))
+    return Batch.from_data_list(batch_lst)
