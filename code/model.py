@@ -158,7 +158,7 @@ class MultiScaleAutoEncoder(nn.Module):
         # BOTTOM
         # DECODE
         b_data = self.decode(b_data, z_x)
-        return b_data, z_latent
+        return kl, b_data, z_latent
     
     def transform_latent_vec(self, z_x):
         z_x = self.linear_up_mpl(z_x)

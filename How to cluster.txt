@@ -28,4 +28,4 @@ CANCELLING A JOB:
     scancel -u hlp179
 
 SENDING FILES TO LOCAL
-    scp hlp179@hendrixgate03fl:/home/hlp179/SST_GNN/code/meshes/08-11-23/2023_11_07-16.42ae_layers-2_latent_dim-256_lr-0.0001_pool_strat-SAG_pooling_ratio-0.3_/mesh_plot_99.png C:\Users\aske9\Desktop\SST_GNN\report_imgs
+    scp -r hlp179@hendrixgate03fl:/home/hlp179/SST_GNN/code/meshes/relevant/ C:\Users\aske9\Desktop\SST_GNN\report_imgs

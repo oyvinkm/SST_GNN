@@ -29,12 +29,11 @@ def save_plots(args, losses, test_losses, velo_val_losses):
     plt.title('Losses Plot')
     plt.plot(losses, label="training loss" + " - " + args.model_type)
     plt.plot(test_losses, label="test loss" + " - " + args.model_type)
-    plt.grid()
+    plt.grid(true)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
 
     plt.legend()
-    plt.show()
     f.savefig(PATH, bbox_inches='tight')
 
 
@@ -274,6 +273,7 @@ def plot_loss(train_loss=None, train_label = 'Rotate',
     ax.set_xlabel("Epoch")
     ax.set_ylabel(label)
     ax.legend(loc=0)
+    ax.grid(True)
     fig.suptitle(title)
     if PATH is not None:
         plt.savefig(PATH)

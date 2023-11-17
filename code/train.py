@@ -34,7 +34,6 @@ def train(model, train_loader, val_loader, optimizer, args):
         loss_func = LMSELoss()
     else:
         loss_func = MSELoss()
-    logger.debug(f'Loss function: {loss_func}')
     train_losses = []
     val_losses = []
     best_val_loss = np.inf
@@ -128,13 +127,13 @@ def test(model, test_loader, args):
     Performs a test run on our final model with the test
     saved in the test_loader.
     """
-    if args.loss == 'RMSE':
-        loss_func = RMSLELoss()
+    kld = nn.KLDivLoss(reduction="batchmean")
     elif args.loss == "LMSE":
         loss_func = LMSELoss()
     elif args.loss == 'MSE':
         loss_func = MSELoss(reduction='mean')
     total_loss = 0
+    accuracy = 0
     model.eval()
     for idx, batch in enumerate(test_loader):
         # data = transform(batch).to(args.device)
@@ -149,9 +148,10 @@ def test(model, test_loader, args):
             save_mesh(pred, batch, 'test', args)
         loss = loss_func(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
+        accuracy += kld(input=pred, target=batch)
 
     total_loss /= idx
-    return total_loss
+    return total_loss, accuracy
 
 def transform_batch(b_data, args):
     if args.transform:
@@ -168,7 +168,6 @@ def save_model(best_model, args):
     path = os.path.join(args.save_model_dir, model_name + ".pt")
     torch.save(best_model.state_dict(), path)
 
-
 def save_args(args):
     if not os.path.isdir(args.save_args_dir):
         os.mkdir(args.save_args_dir)
@@ -177,7 +176,6 @@ def save_args(args):
     with open(path, "w") as f:
         for key, value in args.__dict__.items():
             f.write("%s: %s\n" % (key, value))
-
 
 def save_mesh(pred, truth, idx, args):
     if not os.path.isdir(args.save_mesh_dir):
@@ -188,19 +186,12 @@ def save_mesh(pred, truth, idx, args):
         os.mkdir(folder_path)
     mesh_name = f"mesh_plot_{idx}"
     path = os.path.join(folder_path, mesh_name + ".png")
+    # pred.x = pred.x - truth.x
     fig = plot_dual_mesh(pred, truth)
+    # plt.grid(True)
     fig.savefig(path, bbox_inches="tight")
     plt.close()
     logger.info(f'Mesh saved at {path}')
-
-class RMSLELoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.mse = nn.MSELoss()
-        self.eps = 1e-7
-        
-    def forward(self, pred, actual):
-        return torch.sqrt(self.mse(torch.log(pred + 1+ self.eps), torch.log(actual + 1 + self.eps)))
     
 class LMSELoss(nn.Module):
     def __init__(self):
