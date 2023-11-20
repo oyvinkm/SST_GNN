@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+from torch_geometric.data import Batch, Data
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
@@ -19,12 +20,15 @@ class MultiScaleAutoEncoder(nn.Module):
     pooling and unpooling operations in between in order to obtain a coarse latent
     representation of a graph. Uses an Multilayer Perceptron (MLP) to compute node and
     edge features.
-    Encode: G_0 -> MLP -> MPL -> TopKPool ... MPL -> G_l
-    Decode: G_l -> MPL -> Unpool .... -> MPL -> MLP -> G'_0
+    Encode: G_0 -> MLP -> MPL -> TopKPool ... MPL -> G_l -> Z_l
+    Decode: G_l -> MPL -> Unpool .... -> MPL -> MLP -> G'_0 -> 
     """
 
-    def __init__(self, args):
+    def __init__(self, args, m_ids, m_gs):
         super().__init__()
+        # Bi-Stride Pooling Edges and Node Mask
+        self.m_ids = m_ids
+        self.m_gs = m_gs
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
         if args.out_feature_dim is None:
@@ -41,19 +45,59 @@ class MultiScaleAutoEncoder(nn.Module):
             self.latent_dim = args.hidden_dim
         else:
             self.latent_dim = args.latent_dim
-        self.latent_vec_dim = args.latent_vec_dim
+        self.latent_vec_dim = len(m_ids[-1])
+        self.n = args.n_nodes
+        self.residual = args.residual
         self.args = args
         self.down_layers = nn.ModuleList()
         self.up_layers = nn.ModuleList()
         self.down_pool = nn.ModuleList()
         self.up_pool = nn.ModuleList()
+        self.unpool = Unpool()
+        self.b = args.batch_size
         self.pool = self._pooling_strategy()
         for i in range(self.ae_layers):
-            self.down_layers.append(MessagePassingLayer(args=self.args))
-            if i == 0:
-                self.up_layers.append(MessagePassingLayer(args=self.args, first_up=True))
+            if (i == self.ae_layers - 1):
+                if self.residual:
+                    self.down_layers.append(
+                        MessagePassingLayer(hidden_dim = self.hidden_dim *2, 
+                                    latent_dim = self.latent_dim, 
+                                    args=self.args)
+                                    )
+                    self.up_layers.append(
+                        MessagePassingLayer(hidden_dim = self.hidden_dim * 2, 
+                                            latent_dim = self.hidden_dim, 
+                                            args=self.args)
+                                            )
+                else:
+                    self.down_layers.append(
+                        MessagePassingLayer(hidden_dim = self.hidden_dim, 
+                                    latent_dim = self.latent_dim, 
+                                    args=self.args, bottom=True)
+                                    )
+                    self.up_layers.append(
+                        MessagePassingLayer(hidden_dim = self.hidden_dim, 
+                                            latent_dim = self.hidden_dim, 
+                                            args=self.args)
+                                            )
             else:
-                self.up_layers.append(MessagePassingLayer(args=self.args))
+                self.down_layers.append(
+                    MessagePassingLayer(hidden_dim = self.hidden_dim, 
+                                        latent_dim=self.hidden_dim, 
+                                        args=self.args)
+                                        )
+            if i == 0:
+                self.up_layers.append(
+                    MessagePassingLayer(hidden_dim = self.latent_dim, 
+                                        latent_dim = self.hidden_dim, 
+                                        args=self.args)
+                                        )
+            else:
+                self.up_layers.append(
+                    MessagePassingLayer(hidden_dim = self.hidden_dim, 
+                                        latent_dim = self.hidden_dim, 
+                                        args=self.args)
+                                        )
             if self.args.ae_pool_strat == "ASA":
                 self.down_pool.append(
                     self.pool(
@@ -64,11 +108,13 @@ class MultiScaleAutoEncoder(nn.Module):
                 self.down_pool.append(
                     self.pool(self.hidden_dim, self.ae_ratio)
                 )
+            self.residual_MP = MessagePassingBlock(self.latent_dim, self.hidden_dim, self.args)
+            self.residual_unpool = Unpool()  
             #self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
             self.up_pool.append(Unpool())
-        self.bottom_layer = MessagePassingLayer(args=self.args, bottom=True)
+        self.bottom_layer = MessagePassingLayer(hidden_dim = self.latent_dim, latent_dim = self.latent_dim, args=self.args, bottom=True)
 
-        self.final_layer = MessagePassingLayer(args=self.args)
+        self.final_layer = MessagePassingLayer(hidden_dim = self.hidden_dim, latent_dim = self.hidden_dim, args=self.args)
 
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
@@ -103,65 +149,103 @@ class MultiScaleAutoEncoder(nn.Module):
     def forward(self, b_data):
         """Forward loop, first encoder, then bottom layer, then decoder"""
         x = b_data.x
-        edge_attr = b_data.edge_attr
-        x = self.node_encoder(x)
-        edge_attr = self.edge_encoder(edge_attr)
-        in_edge_attr = b_data.edge_attr
-        down_gs = []
-        down_outs = []
-        perms = []
-        ws = []
-        bs = []
-        b_data.x = x
-        b_data.edge_attr = edge_attr
+        b_data.x = self.node_encoder(x)
+        self.b = len(torch.unique(b_data.batch))
         # ENCODE
-        for i in range(self.ae_layers):
-            b_data = self.down_layers[i](b_data)
-            batch = b_data.batch
-            ws.append(b_data.weights)
-            bs.append(batch)
-
-            down_outs.append(b_data.x)
-            down_gs.append(b_data.edge_index)
-            x, edge_index, edge_attr, batch, perm, _ = self.down_pool[i](
-                b_data.x, b_data.edge_index, b_data.edge_attr, batch
-            )
-            b_data.x = x
-            b_data.edge_index = edge_index
-            b_data.edge_attr = edge_attr
-            b_data.batch = batch
-            b_data.weights = b_data.weights[perm]
-            perms.append(perm)
-
-        # Do the final MMP before we arrive at G_L
+        b_data, z_x = self.encode(b_data)
+        z_latent = z_x.clone()
+        z_x = self.transform_latent_vec(z_x)
         # BOTTOM
-        b_data = self.bottom_layer(b_data)
-        z = b_data.clone()
-        z_x = self.batch_to_dense_transpose(b_data)
-        z_x = self.linear_down_mpl(z_x)
+        # DECODE
+        b_data = self.decode(b_data, z_x)
+        return kl, b_data, z_latent
+    
+    def transform_latent_vec(self, z_x):
         z_x = self.linear_up_mpl(z_x)
         z_x = self.batch_to_sparse(z_x)
-        b_data.x = z_x
+        return z_x
 
-        # DECODE
+
+    def encode(self, b_data):
+        if self.residual:
+            res = self._map_res(b_data.clone().to_data_list())  
         for i in range(self.ae_layers):
+            if i == self.ae_layers - 1 and self.residual:
+                b_data = self._residual_connection(b_data, res)
+            b_data = self.down_layers[i](b_data)
+            b_data = self._bi_pool_batch(b_data, i)
+        b_data = self.bottom_layer(b_data)
+        z_x = self.batch_to_dense_transpose(b_data)
+        z_x = self.linear_down_mpl(z_x)
+        return b_data, z_x
+    
+    def decode(self, b_data, z_x):
+        b_data.x = z_x
+        res_up = self._res_upsample(b_data, 0)
+        for i in range(self.ae_layers):
+            if i == self.ae_layers - 1:
+                b_data = self._residual_connection_up(b_data, res_up)
+                logger.debug(f'post residual: {b_data}')
             up_idx = self.ae_layers - i - 1
-            logger.debug(f'Decode: {b_data}')
-            x = self.up_layers[i](b_data)
-            x = self.up_pool[i](b_data.x, down_outs[up_idx].shape[0], perms[up_idx])
-            b_data.weights = ws[up_idx]
-            b_data.batch = bs[up_idx]
-            b_data.x = x
-            b_data.edge_index = down_gs[up_idx]
+            logger.debug(f'residual layer {self.up_layers[i].hidden_dim} and {self.up_layers[i].latent_dim}')
+            b_data = self.up_layers[i](b_data)
+            b_lst = b_data.to_data_list()
+            batch_lst = []
+            g, mask = self.m_gs[up_idx], self.m_ids[up_idx]
+            up_nodes = len(self.m_ids[up_idx - 1]) if up_idx != 0  else self.n
+            if not torch.is_tensor(g):
+                g = torch.tensor(g)
+            for idx, data in enumerate(b_lst):
+                data.x = self.up_pool[i](data.x, up_nodes, mask)
+                data.weights = self.up_pool[i](data.weights, up_nodes, mask)
+                data.edge_index = g
+                batch_lst.append(data)
+            b_data = Batch.from_data_list(batch_lst).to(self.args.device)
+        b_data = self.final_layer(b_data)
+        b_data.x = self.out_node_decoder(b_data.x)
+        return b_data
 
-        x = self.final_layer(b_data)
-        x = self.out_node_decoder(b_data.x)
-        b_data.x = x
-        b_data.edge_attr = in_edge_attr
-        #b_data.x = self.act(b_data.x)
-        #b_data.edge_attr = self.act(b_data.edge_attr)
-        return b_data, z_x  # , edge_attr, edge_index
+    def _residual_connection_up(self, b_data, res_up):
+        b_lst = b_data.clone().to_data_list()
+        for i,d in enumerate(b_lst):
+            d.x = torch.cat((d.x, res_up[i]), dim = 1)
+        return  Batch.from_data_list(b_lst)
 
+    def _res_upsample(self, b_data, i):
+        up_nodes = len(self.m_ids[i])
+        g = torch.tensor(self.m_gs[i + 1]).to(self.args.device)
+        mask = self.m_ids[self.ae_layers - 1]
+        b_lst = b_data.clone().to_data_list()
+        logger.debug(f'Res b_lst : {b_lst}')
+        unpooled = [self.residual_MP(self.residual_unpool(data.x, up_nodes, mask), g) for data in b_lst]
+        return unpooled
+        
+    def _residual_connection(self, b_data, res):
+        
+        p_lst = b_data.to_data_list()
+        for idx, data in enumerate(p_lst):
+            data.x = torch.cat((data.x, res[idx]), dim = 1)
+        return Batch.from_data_list(p_lst).to(self.args.device)
+    
+    def _map_res(self, b_lst):
+        res = [data.x for data in b_lst]
+        for id in self.m_ids[:-1]:
+            res = [x[id] for x in res]
+        return res
+
+    def _bi_pool_batch(self, b_data, i):
+        b_lst = Batch.to_data_list(b_data)
+        data_lst = []
+        if not torch.is_tensor(self.m_gs[i+1]):
+            g = torch.tensor(self.m_gs[i+1])
+        mask = self.m_ids[i]
+        for idx, data in enumerate(b_lst):
+            data.x = data.x[mask]
+            data.weights = data.weights[mask]
+            data.edge_index = g
+            data_lst.append(data)
+        return Batch.from_data_list(data_lst).to(self.args.device)
+    
     def batch_to_dense_transpose(self, z):
         count  = np.unique(z.batch.cpu(), return_counts= True)
         count = list(zip(count[0], count[1]))
@@ -195,30 +279,28 @@ class MessagePassingLayer(torch.nn.Module):
     The Multiscale Autoencoder consists of multiple of these
     """
 
-    def __init__(self, args, bottom = False, first_up = False):
+    def __init__(self, hidden_dim, latent_dim, args, bottom = False, first_up = False):
         super(MessagePassingLayer, self).__init__()
         self.hidden_dim = args.hidden_dim
         self.l_n = args.mpl_layers
         self.args = args
         self.bottom = bottom
         self.first_up = first_up
-        logger.debug(f'First up: {first_up}')
-        logger.debug(f'Bottom : {bottom}')
-        if args.latent_dim is not None and (bottom or  first_up):
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        """ if args.latent_dim is not None and (bottom or  first_up):
             if first_up:
                 self.hidden_dim = args.latent_dim
                 self.latent_dim = args.hidden_dim
             else:
                 self.latent_dim = args.latent_dim
-            logger.debug(f'Hidden dim is {self.hidden_dim}')
-            logger.debug(f'Latent dim is {self.latent_dim}')
         else:
-            self.latent_dim = args.hidden_dim
+            self.latent_dim = args.hidden_dim """
         self.num_blocks = args.num_blocks
         self.down_gmps = nn.ModuleList()
         self.up_gmps = nn.ModuleList()
         self.unpools = nn.ModuleList()
-        self.bottom_gmp = MessagePassingBlock(hidden_dim=self.latent_dim, args=args)
+        self.bottom_gmp = MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim=self.latent_dim, args=args)
         self.edge_conv = WeightedEdgeConv()
         self.pools = nn.ModuleList()
         self.pool = self._pooling_strategy()
@@ -228,18 +310,14 @@ class MessagePassingLayer(torch.nn.Module):
             self.mpl_ratio = self.args.mpl_ratio
 
         for i in range(self.l_n):
-            if i == 0 and bottom:
+            if i == 0:
                 self.down_gmps.append(
-                    MessagePassingBlock(hidden_dim=self.hidden_dim, latent_dim = self.latent_dim, args=args)
-                )
-            elif i == 0 and first_up:
-                self.down_gmps.append(
-                    MessagePassingBlock(hidden_dim=self.hidden_dim, latent_dim = self.latent_dim, args=args)
-                )
+                        MessagePassingBlock(hidden_dim=self.hidden_dim, latent_dim = self.latent_dim, args=args)
+                    )
             else:
                 self.down_gmps.append(
-                    MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim = self.latent_dim, args=args)
-                )
+                       MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim = self.latent_dim, args=args)
+                    )
             self.up_gmps.append(
                 MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim=self.latent_dim, args=args)
             )
@@ -265,15 +343,11 @@ class MessagePassingLayer(torch.nn.Module):
         ws = []
         b_data.edge_weight = None
         edge_attr = b_data.edge_attr
-
+        b_data.weights = b_data.x.new_ones((b_data.x.shape[-2], 1)) if b_data.weights is None else b_data.weights
         for i in range(self.l_n):
             h = b_data.x
             g = b_data.edge_index
             h = self.down_gmps[i](h, g)
-            if self.bottom or self.first_up:
-                logger.debug(f'latent dim forward loop: {self.latent_dim}')
-                logger.debug(f'b_data after MPL: {b_data}')
-                logger.debug(f'weights : {b_data.weights.shape}')
             # record the infor before aggregation
             down_outs.append(h)
             down_gs.append(g)
@@ -310,7 +384,6 @@ class MessagePassingLayer(torch.nn.Module):
                 b_data.edge_weight = edge_weight
                 b_data.batch = batch
                 b_data.weights = b_data.weights[index]
-
         b_data.x = self.bottom_gmp(b_data.x, b_data.edge_index)
         for i in range(self.l_n):
             up_idx = self.l_n - i - 1
@@ -365,6 +438,8 @@ class WeightedEdgeConv(MessagePassing):
 
     @torch.no_grad()
     def cal_ew(self, w, g):
+        if w is None:
+            w = torch.ones_like()
         deg = degree(g[0], dtype=torch.float, num_nodes=w.shape[0])
         normed_w = w.squeeze(-1) / deg
         i = g[0]
@@ -383,17 +458,14 @@ class MessagePassingBlock(torch.nn.Module):
     Just combines n number of message passing layers
     """
 
-    def __init__(self, hidden_dim, args, latent_dim = None, num_blocks=None):
+    def __init__(self, hidden_dim, latent_dim, args, num_blocks=None):
         super(MessagePassingBlock, self).__init__()
         if num_blocks is None:
             self.num_blocks = args.num_blocks
         else:
             self.num_blocks = num_blocks
         self.hidden_dim = hidden_dim
-        if latent_dim is None:
-            self.latent_dim = hidden_dim
-        else:
-            self.latent_dim = latent_dim
+        self.latent_dim = latent_dim
         self.processor = nn.ModuleList()
         assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
         
@@ -465,3 +537,6 @@ class GCNConv(MessagePassing):
 
         # Step 5: Return new node embeddings.
         return aggr_out
+
+
+
