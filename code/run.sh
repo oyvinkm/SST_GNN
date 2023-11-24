@@ -27,7 +27,7 @@ python run.py \
     -transform_p 0.1 \
     -weight_decay 0.0005 \
     -lr 1e-4 \
-    -logger_lvl SUCCESS \
+    -logger_lvl INFO \
     -ae_pool_strat SAG \
     -pool_strat ASA \
     -opt adam \

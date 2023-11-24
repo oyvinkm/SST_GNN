@@ -28,17 +28,14 @@ def train(model, train_loader, val_loader, optimizer, args):
 
     # train
     # NOTE: Might make dependent on args which loss function
-    if args.loss == 'RMSLE':
-        loss_func = RMSLELoss()
-    elif args.loss == 'LMSE':
-        loss_func = LMSELoss()
-    else:
-        loss_func = MSELoss()
+
+    criterion = LMSELoss()
+
     train_losses = []
     val_losses = []
     best_val_loss = np.inf
     best_model = None
-
+    beta = 0.01
     if args.progress_bar:
         manager = enlighten.get_manager()
         epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
@@ -59,9 +56,9 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
             optimizer.zero_grad()  # zero gradients each time
-            pred, _ = model(b_data)
-            # NOTE: Does the loss have to be a function in the model?
-            loss = loss_func(pred.x, batch.x)
+            pred, kl = model(b_data)
+            rec_loss = criterion(pred.x, batch.x)
+            loss = beta*kl + rec_loss
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -69,10 +66,10 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch_counter.close()
         total_loss /= len(train_loader)
         train_losses.append(total_loss)
-
+        logger.debug("training success \n validating...")
         # Every tenth epoch, calculate acceleration test loss and velocity validation loss
         if epoch % args.log_step == 0:
-            val_loss = validate(model, val_loader, loss_func, epoch, args)
+            val_loss = validate(model, val_loader, criterion, epoch, args)
             val_losses.append(val_loss)
             if args.save_model:
                 if val_loss < best_val_loss:
@@ -93,10 +90,11 @@ def train(model, train_loader, val_loader, optimizer, args):
     if args.progress_bar:
         epochs.close()
         manager.stop()
+
     return train_losses, val_losses, best_model
 
 @torch.no_grad()
-def validate(model, val_loader, loss_func, epoch, args):
+def validate(model, val_loader, criterion, epoch, args):
     """
     Performs a validation run on our current model with the validationset
     saved in the val_loader.
@@ -111,8 +109,8 @@ def validate(model, val_loader, loss_func, epoch, args):
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
         b_data = transform_batch(batch, args)
-        pred, _ = model(b_data)
-        loss = loss_func(pred.x[:,:2], batch.x[:,:2])
+        pred, _ = model(b_data, Train=False)
+        loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
@@ -128,12 +126,10 @@ def test(model, test_loader, args):
     saved in the test_loader.
     """
     kld = nn.KLDivLoss(reduction="batchmean")
-    elif args.loss == "LMSE":
-        loss_func = LMSELoss()
-    elif args.loss == 'MSE':
-        loss_func = MSELoss(reduction='mean')
+
+    criterion = LMSELoss()
     total_loss = 0
-    accuracy = 0
+    total_accuracy = 0
     model.eval()
     for idx, batch in enumerate(test_loader):
         # data = transform(batch).to(args.device)
@@ -143,15 +139,27 @@ def test(model, test_loader, args):
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
         b_data = transform_batch(batch, args)
-        pred, _ = model(b_data)
+        pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
-        loss = loss_func(pred.x[:,:2], batch.x[:,:2])
+        loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
-        accuracy += kld(input=pred, target=batch)
+        total_accuracy += kld(input=pred.x, target=batch.x).item()
 
     total_loss /= idx
-    return total_loss, accuracy
+    total_accuracy /= idx
+    save_accuracy(total_accuracy, args)
+    return total_loss
+
+def save_accuracy(accuracy, args):
+    if not os.path.isdir(args.save_accuracy_dir):
+        os.mkdir(args.save_accuracy_dir)
+    filename = "accuracy_" + args.time_stamp
+    path = os.path.join(args.save_accuracy_dir, filename+".txt")
+    with open(path, "w") as f:
+        f.write("accuracy: %s" % (accuracy))
+    f.close()
+    
 
 def transform_batch(b_data, args):
     if args.transform:
@@ -188,7 +196,6 @@ def save_mesh(pred, truth, idx, args):
     path = os.path.join(folder_path, mesh_name + ".png")
     # pred.x = pred.x - truth.x
     fig = plot_dual_mesh(pred, truth)
-    # plt.grid(True)
     fig.savefig(path, bbox_inches="tight")
     plt.close()
     logger.info(f'Mesh saved at {path}')

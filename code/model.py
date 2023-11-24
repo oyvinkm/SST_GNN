@@ -113,7 +113,6 @@ class MultiScaleAutoEncoder(nn.Module):
             #self.down_pool.append(TopKPooling(self.hidden_dim, self.ae_ratio))
             self.up_pool.append(Unpool())
         self.bottom_layer = MessagePassingLayer(hidden_dim = self.latent_dim, latent_dim = self.latent_dim, args=self.args, bottom=True)
-
         self.final_layer = MessagePassingLayer(hidden_dim = self.hidden_dim, latent_dim = self.hidden_dim, args=self.args)
 
         self.node_encoder = Sequential(
@@ -135,36 +134,55 @@ class MultiScaleAutoEncoder(nn.Module):
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
-
-        self.linear_down_mpl = Sequential(Linear(self.latent_vec_dim, 64),
+        
+        self.mlp_logvar = Sequential(Linear(self.latent_vec_dim, 64),
                         LeakyReLU(),
-                         #LayerNorm(64),
-                         Linear(64, 1))
-        self.linear_up_mpl = Sequential(Linear(1, 64),
+                        Linear(64, 1))
+        
+        self.mlp_mu = Sequential(Linear(self.latent_vec_dim, 64),
+                        LeakyReLU(),
+                        Linear(64, 1))
+
+        self.linear_up_mlp = Sequential(Linear(1, 64),
                                     LeakyReLU(),
                                     #LayerNorm(64),
                                     Linear(64, self.latent_vec_dim))
         self.act = nn.Softmax(dim = 1)
 
-    def forward(self, b_data):
+    def forward(self, b_data, Train = True):
         """Forward loop, first encoder, then bottom layer, then decoder"""
+                # ENCODING
         x = b_data.x
         b_data.x = self.node_encoder(x)
         self.b = len(torch.unique(b_data.batch))
-        # ENCODE
-        b_data, z_x = self.encode(b_data)
-        z_latent = z_x.clone()
-        z_x = self.transform_latent_vec(z_x)
-        # BOTTOM
-        # DECODE
-        b_data = self.decode(b_data, z_x)
-        return kl, b_data, z_latent
-    
-    def transform_latent_vec(self, z_x):
-        z_x = self.linear_up_mpl(z_x)
-        z_x = self.batch_to_sparse(z_x)
-        return z_x
+        b_data = self.encode(b_data)
 
+        if Train:
+            mu = self.to_latent_vec(b_data, self.mlp_mu)
+            log_var = self.to_latent_vec(b_data, self.mlp_logvar)
+            z = self.sample(mu, log_var)
+            kl = torch.mean(-0.5 * torch.sum(1+log_var-mu**2-log_var.exp(), dim=1), dim=0)
+
+        else:
+            z = self.to_latent_vec(b_data, self.mlp_mu)
+            kl = None
+
+                # DECODING
+        z_x = self.from_latent_vec(z)
+        b_data = self.decode(b_data, z_x)
+        return b_data, kl
+
+    #implement sampling
+    def sample(self, mu, logvar):
+        """Shamelessly stolen from https://github.com/julschoen/Latent-Space-Exploration-CT/blob/main/Models/VAE.py"""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def to_latent_vec(self, b_data, mpl):
+        b_data = self.batch_to_dense_transpose(b_data)
+        z_x = mpl(b_data)
+        return z_x
 
     def encode(self, b_data):
         if self.residual:
@@ -175,9 +193,12 @@ class MultiScaleAutoEncoder(nn.Module):
             b_data = self.down_layers[i](b_data)
             b_data = self._bi_pool_batch(b_data, i)
         b_data = self.bottom_layer(b_data)
-        z_x = self.batch_to_dense_transpose(b_data)
-        z_x = self.linear_down_mpl(z_x)
-        return b_data, z_x
+        return b_data
+    
+    def from_latent_vec(self, z_x):
+        b_data = self.linear_up_mlp(z_x)
+        b_data = self.batch_to_sparse(b_data)
+        return b_data
     
     def decode(self, b_data, z_x):
         b_data.x = z_x
@@ -185,9 +206,7 @@ class MultiScaleAutoEncoder(nn.Module):
         for i in range(self.ae_layers):
             if i == self.ae_layers - 1:
                 b_data = self._residual_connection_up(b_data, res_up)
-                logger.debug(f'post residual: {b_data}')
             up_idx = self.ae_layers - i - 1
-            logger.debug(f'residual layer {self.up_layers[i].hidden_dim} and {self.up_layers[i].latent_dim}')
             b_data = self.up_layers[i](b_data)
             b_lst = b_data.to_data_list()
             batch_lst = []
@@ -216,7 +235,6 @@ class MultiScaleAutoEncoder(nn.Module):
         g = torch.tensor(self.m_gs[i + 1]).to(self.args.device)
         mask = self.m_ids[self.ae_layers - 1]
         b_lst = b_data.clone().to_data_list()
-        logger.debug(f'Res b_lst : {b_lst}')
         unpooled = [self.residual_MP(self.residual_unpool(data.x, up_nodes, mask), g) for data in b_lst]
         return unpooled
         
@@ -539,4 +557,11 @@ class GCNConv(MessagePassing):
         return aggr_out
 
 
-
+#############################################################################
+#                   DEPRECATED
+        self.linear_down_mlp = Sequential(Linear(self.latent_vec_dim, 64),
+                        LeakyReLU(),
+                         #LayerNorm(64),
+                         Linear(64, 1))
+        
+#############################################################################
