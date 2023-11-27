@@ -52,9 +52,12 @@ def t_or_f(value):
     else:
        logger.CRITICAL("boolean argument incorrect")
 
+day = datetime.now().strftime("%d-%m-%y")
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-data_dir', type=str, default='data/cylinder_flow/')
 parser.add_argument('-save_args_dir', type=str, default='args_chkpoints')
+parser.add_argument('-save_accuracy_dir', type=str, default='accuracies/'+day)
 parser.add_argument('-save_visualize_dir', type=str, default='visualizations')
 parser.add_argument('-save_mesh_dir', type=str, default='meshes')
 parser.add_argument('-ae_pool_strat', type=str, default='')
@@ -187,8 +190,7 @@ def main():
             val_label="Validation Loss",
             PATH=PATH,
         )
-    test_loss, accuracy = test(model=model, test_loader=test_loader, args=args)
-    logger.succes(f"Accuracy = {accuracy}")
+    test_loss = test(model=model, test_loader=test_loader, args=args)
     logger.debug(test_loss)
 
 
@@ -218,18 +220,15 @@ if __name__ == "__main__":
     logger.info(f"CUDA has version: {torch.version.cuda}")
 
     param_grid = {
-              'latent_dim': [64, 128, 256], 
-              'ae_layers': [2, 3,],
-              'ae_ratio' : [0.1, 0.3],
-              'pool_strat' : ['SAG', 'ASA'],
-              'hidden_dim' : [32, 64]
+              'latent_dim': [128], 
+              'ae_layers': [3],
+              'pool_strat' : ['SAG'],
+              'hidden_dim' : [64]
               }
     lst = list(ParameterGrid(param_grid))
     my_bool = args.transform
 
     while True:
-        # rand_choice = randint(0, len(lst)-1)
-        # rand_args = lst[rand_choice]
         rand_args = choice(lst)
         lst.remove(rand_args)
         args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")

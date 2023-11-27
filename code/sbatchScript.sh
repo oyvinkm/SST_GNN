@@ -9,4 +9,5 @@
 
 #your script, in this case: write the hostname and the ids of the chosen gpus.
 echo $CUDA_VISIBLE_DEVICES
-./run.sh
+# ./run.sh
+python make_gif.py

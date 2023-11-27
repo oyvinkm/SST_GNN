@@ -4,22 +4,21 @@
 now="$(date +"%y_%m_%d-%H.%M")"
 day="$(date +"%d-%m-%y")"
 
-python run.py \
+python random_search.py \
     -loss_step 50 \
     -log_step 20 \
     -instance_id 1 \
     -batch_size 16 \
     -out_feature_dim 11 \
-    -epochs 2 \
-    -ae_layers 2 \
+    -epochs 101 \
+    -ae_layers 4 \
     -hidden_dim 64 \
-    -mpl_layers 2 \
+    -mpl_layers 1 \
     -num_blocks 1 \
     -latent_dim 128 \
     -opt_decay_step 30 \
     -opt_restart 10 \
     -num_workers 1 \
-    -ae_ratio 0.1 \
     -test_ratio 0.1 \
     -val_ratio 0.1 \
     -mpl_ratio 0.8 \

@@ -17,14 +17,12 @@ from torch_geometric.loader import DataLoader
 
 from dataprocessing.dataset import MeshDataset
 from mask import AttributeMask
-from model import MultiScaleAutoEncoder
+# from model import MultiScaleAutoEncoder
+from newmodel import MultiScaleAutoEncoder
 from opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
 
-
-# TODO: Set up args so they can be called from config file
-# NOTE: Set args up to take loss function.
 def none_or_str(value):
     if value.lower() == "none":
         return None
@@ -147,7 +145,6 @@ def main():
     train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
 
     # Split training data into train and validation data
-    # TODO: calculate correct val_ratio
     train_data, val_data = train_test_split(
         train_data, test_size=args.val_ratio / (1 - args.test_ratio)
     )
