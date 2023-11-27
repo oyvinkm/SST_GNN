@@ -29,8 +29,12 @@ class MultiScaleAutoEncoder(nn.Module):
         super().__init__()
         self.encoder = Encoder(args, m_ids, m_gs)
         self.decoder = Decoder(args, m_ids, m_gs)
-    
-    def forward(b_data, Train=True):
-        kl, z, b_data = encoder(b_data, Train)
-        b_data = decoder(z, b_data)
-        return b_data
+        self.placeholder = Batch.from_data_list([Data(x=torch.ones(len(m_ids[-1]), args.latent_dim), 
+                                                                   edge_index = torch.tensor(m_gs[-1]),
+                                                                   weights = torch.ones(len(m_ids[-1])))])
+        logger.debug(f"placeholder = {self.placeholder}")
+        
+    def forward(self, b_data, Train=True):
+        kl, z, b_data = self.encoder(b_data, Train)
+        b_data = self.decoder(b_data, z)
+        return b_data, kl
