@@ -34,7 +34,6 @@ class Decoder(nn.Module):
             if i == self.ae_layers - 1:
                 up_nodes = self.n
             else:
-                logger.debug(len(m_ids[i]))
                 up_nodes = len(m_ids[args.ae_layers - i- 2])
             self.layers.append(Res_up(channel_in=self.max_hidden_dim // 2 ** i,
                                       channel_out=self.max_hidden_dim // 2 ** (i+1),
@@ -66,8 +65,7 @@ class Decoder(nn.Module):
         z_x = self.from_latent_vec(z)
         b_data.x = z_x
         b_data = self.mpl_bottom(b_data)
-        for i in range(self.ae_layers): #
-           logger.debug(b_data)
+        for i in range(self.ae_layers):
            b_data = self.layers[i](b_data)
         b_data = self.final_layer(b_data) #
         b_data.x = self.out_node_decoder(b_data.x) #

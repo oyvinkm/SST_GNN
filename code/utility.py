@@ -204,13 +204,14 @@ class MessagePassingLayer(torch.nn.Module):
 
             # aggregate then pooling
             # Calculates edge and node weigths
-            ew, w = self.edge_conv.cal_ew(b_data.weights, g)
-            b_data.weights = w
-            # Does edge convolution on nodes with edge weigths
-            b_data.x = self.edge_conv(h, g, ew)
-            # Does edge convolution on position with edge weights
-            cts.append(ew)
-            
+            if self.args.edge_conv:
+                ew, w = self.edge_conv.cal_ew(b_data.weights, g)
+                b_data.weights = w
+                # Does edge convolution on nodes with edge weigths
+                h = self.edge_conv(h, g, ew)
+                # Does edge convolution on position with edge weights
+                cts.append(ew)
+            b_data.x = h
             if self.args.pool_strat == "ASA":
                 x, edge_index, edge_weight, batch, index = self.pools[i](
                     b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch
@@ -238,7 +239,8 @@ class MessagePassingLayer(torch.nn.Module):
                 b_data.x, down_outs[up_idx].shape[0], down_masks[up_idx]
             )
             tmp_g = down_gs[up_idx]
-            h = self.edge_conv(h, tmp_g, cts[up_idx], aggragating=False)
+            if self.args.edge_conv:
+                h = self.edge_conv(h, tmp_g, cts[up_idx], aggragating=False)
             h = self.up_gmps[i](h, g)
             h = h.add(down_outs[up_idx])
             b_data.x = h

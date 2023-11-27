@@ -17,8 +17,8 @@ from torch_geometric.loader import DataLoader
 
 from dataprocessing.dataset import MeshDataset
 from mask import AttributeMask
-# from model import MultiScaleAutoEncoder
-from newmodel import MultiScaleAutoEncoder
+from model import MultiScaleAutoEncoder
+# from newmodel import MultiScaleAutoEncoder
 from opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
@@ -64,7 +64,6 @@ parser.add_argument('-opt_scheduler', type=str, default='step')
 parser.add_argument('-save_model_dir', type=str, default='model/'+day)
 parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
 parser.add_argument('-logger_lvl', type=str, default='DEBUG')
-parser.add_argument('-residual_idx', type=list, default = [1])
 parser.add_argument('-loss', type=none_or_str, default='LMSE')
 parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
 parser.add_argument('-transform', type=t_or_f, default=False)
@@ -75,6 +74,7 @@ parser.add_argument('-save_model', type=t_or_f, default=True)
 parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
+parser.add_argument('-edge_conv', type=t_or_f, default=False)
 parser.add_argument('-load_model', type=t_or_f, default=True)
 parser.add_argument('-model_file', type=str, default='')
 parser.add_argument('-loss_step', type=int, default=20)

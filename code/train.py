@@ -66,7 +66,6 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch_counter.close()
         total_loss /= len(train_loader)
         train_losses.append(total_loss)
-        logger.debug("training success \n validating...")
         # Every tenth epoch, calculate acceleration test loss and velocity validation loss
         if epoch % args.log_step == 0:
             val_loss = validate(model, val_loader, criterion, epoch, args)
