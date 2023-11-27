@@ -1,0 +1,14 @@
+*__pycache__/
+code/args_chkpoints/
+code/clean.sh
+code/data/
+code/meshes/
+code/model_chkpoints/
+code/plots/
+*slurm-*
+cylinder_flow/
+code/args/
+code/18-11-23/
+code/model/
+code/accuracies
+code/gifs/
