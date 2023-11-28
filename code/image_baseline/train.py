@@ -103,6 +103,7 @@ class Trainer(object):
   def validate(self, net, val_loader, epoch):
     val_loss = []
     with torch.no_grad():
+      net.eval()
       for j, (data, _) in enumerate(val_loader):
           inputs = data.to(self.device)
           logger.debug(f'Val input: {inputs.shape}')
@@ -129,6 +130,7 @@ class Trainer(object):
     best_val_loss = np.inf
     tot_val_loss = np.inf
     for epoch in range(no_epochs):  # Loop over the dataset multiple times
+        net.train()
         epochs.update()
         batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         best_model = None
@@ -151,7 +153,6 @@ class Trainer(object):
 
             l = loss.item()
             losses.append(l)
-        val_loss = []
         print('VALIDATING...')
         
         tot_val_loss = self.validate(net, val_loader, epoch)

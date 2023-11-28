@@ -86,7 +86,7 @@ class Encoder(nn.Module):
         x = self.conv3(x)
         x = self.conv4(x)
         x = self.conv5(x)
-        #x = self.mlp(x)
+        x = self.mlp(x)
         logger.debug(f'Latent dim encoder: {x.shape}')
         if Train:
             mu = self.conv_mu(x)
@@ -106,7 +106,7 @@ class Decoder(nn.Module):
     def __init__(self, channels, ch = 64, z = 32):
         super(Decoder, self).__init__()
         self.dim_z = z
-        #self.mlp = nn.Linear(in_features=1, out_features=4)
+        self.mlp = nn.Linear(in_features=1, out_features=4)
         self.dropout = nn.Dropout2d(p = .3)
         self.conv1 = Res_up(z, ch*16)
         self.conv12 = Res_up(ch*16, ch*8)
@@ -119,17 +119,13 @@ class Decoder(nn.Module):
         self.act = nn.Sigmoid()
 
     def forward(self, x):
-        #x = self.mlp(x)
+        x = self.mlp(x)
         logger.debug(f'Latent dim decoder: {x.shape}')
         x = self.conv1(x)
         x = self.conv12(x)
-        if self.train:
-            x = self.dropout(x)
         x = self.conv2(x)
         x = self.conv3(x)
         x = self.conv4(x)
-        if self.train:
-            x = self.dropout(x)
         x = self.conv5(x)
         x = self.conv6(x)
         x = self.conv7(x)

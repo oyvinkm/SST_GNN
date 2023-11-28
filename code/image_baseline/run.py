@@ -71,7 +71,7 @@ def main():
   test_ratio = .2
   val_ratio = .2
 
-  transform = T.Compose([T.Resize((128, 128)),
+  transform = T.Compose([T.Resize((128, 512)),
                         #T.Grayscale(),
                         T.ToTensor()])
   dataset = torchvision.datasets.ImageFolder(root, transform = transform)
@@ -99,7 +99,7 @@ def main():
  # model_path = 'model_chkpoints/model_VAE_2023_11_26-14.51.pt'
   model_path = None
 
-  no_epochs = 50
+  no_epochs = 100
   lr = 1e-5
   eps = 1e-5
   beta = 0.0001
@@ -137,5 +137,5 @@ if __name__ == "__main__":
     # ERROR (40): used to record error conditions that affected a specific operation.
     # CRITICAL (50): used to used to record error conditions that prevent a core
     # function from working.
-    logger.add(sys.stderr, level='DEBUG')
+    logger.add(sys.stderr, level='INFO')
     main()
