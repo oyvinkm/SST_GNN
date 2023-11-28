@@ -9,6 +9,28 @@ from torch_geometric.utils import degree
 from torch_scatter import scatter
 from loguru import logger
 
+
+class MessagePassingEdgeConv(MessagePassing):
+    def __init__(self, channel_in, channel_out, args):
+        super(MessagePassingEdgeConv, self).__init__()
+        self.messagePassing = MessagePassingBlock(hidden_dim=channel_in, latent_dim = channel_out, num_blocks=args.num_blocks, args = args)
+        self.edge_conv = WeightedEdgeConv()
+        self.args = args
+    
+    def forward(self, b_data):
+        x, g, w = b_data.x, b_data.edge_index, b_data.weights
+        x = self.messagePassing(x, g)
+        ew, w = self.edge_conv.cal_ew(w, g)
+        # Does edge convolution on nodes with edge weigths
+        x = self.edge_conv(x, g, ew)
+        # Does edge convolution on position with edge weights
+        if len(w.shape) < 2:
+            w = w.unsqueeze(dim = 1)
+        b_data.weights = w
+        b_data.x = x
+        return b_data
+    
+
 class GCNConv(MessagePassing):
     """
     Classic MessagePassing/Convolution
