@@ -8,6 +8,7 @@ import sys
 import warnings
 from datetime import datetime
 
+sys.path.append('../')
 import numpy as np
 import torch
 from loguru import logger
@@ -19,7 +20,7 @@ from dataprocessing.dataset import MeshDataset
 from mask import AttributeMask
 from model import MultiScaleAutoEncoder, MultiScaleAutoEncoder_Alt
 # from newmodel import MultiScaleAutoEncoder
-from opt import build_optimizer
+from utils.opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
 

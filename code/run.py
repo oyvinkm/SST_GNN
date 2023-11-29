@@ -7,7 +7,6 @@ import random
 import sys
 import warnings
 from datetime import datetime
-
 import numpy as np
 import torch
 from loguru import logger
@@ -17,11 +16,13 @@ from torch_geometric.loader import DataLoader
 
 from dataprocessing.dataset import MeshDataset
 from mask import AttributeMask
-from model import MultiScaleAutoEncoder
+from utils.visualization import plot_dual_mesh
+from model.model import MultiScaleAutoEncoder
 # from newmodel import MultiScaleAutoEncoder
-from opt import build_optimizer
+from utils.opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
+sys.path.append('../')
 
 def none_or_str(value):
     if value.lower() == "none":
@@ -57,11 +58,10 @@ parser.add_argument('-save_args_dir', type=str, default='args/'+day)
 parser.add_argument('-save_visualize_dir', type=str, default='visualizations/'+day)
 parser.add_argument('-save_mesh_dir', type=str, default='meshes/'+day)
 parser.add_argument('-save_accuracy_dir', type=str, default='accuracies/'+day)
-parser.add_argument('-ae_pool_strat', type=str, default='')
 parser.add_argument('-pool_strat', type=str, default='ASA')
 parser.add_argument('-opt', type=str, default='adam')
 parser.add_argument('-opt_scheduler', type=str, default='step')
-parser.add_argument('-save_model_dir', type=str, default='model/'+day)
+parser.add_argument('-save_model_dir', type=str, default='model_chkpoints/'+day)
 parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
 parser.add_argument('-logger_lvl', type=str, default='DEBUG')
 parser.add_argument('-loss', type=none_or_str, default='LMSE')
@@ -75,8 +75,8 @@ parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
 parser.add_argument('-edge_conv', type=t_or_f, default=False)
-parser.add_argument('-load_model', type=t_or_f, default=True)
-parser.add_argument('-model_file', type=str, default='')
+parser.add_argument('-load_model', type=t_or_f, default=False)
+parser.add_argument('-model_file', type=str, default="model_2023_11_27-13.33_ae_layers-3_hidden_dim-64_latent_dim-128_pool_strat-SAG.pt")
 parser.add_argument('-loss_step', type=int, default=20)
 parser.add_argument('-log_step', type=int, default=20)
 parser.add_argument('-test_ratio', type=float, default=0.2)
@@ -132,14 +132,24 @@ def main():
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs)
-    
     model_path = os.path.join(args.save_model_dir , args.model_file)
-    if args.load_model and os.path.isfile(model_path):
+    if args.load_model:
+        logger.info("Loading model")
+        assert os.path.isfile(model_path)
         model.load_state_dict(torch.load(model_path))
         logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
-
+    
+    
+    # input = torch.ones((1, 128, 1))
+    # graph = model.decoder(model.placeholder, input.to(args.device))
+    # g1 = dataset[0]
+    # g2 = g1.clone()
+    # g2.x = graph.x
+    # fig = plot_dual_mesh(g2, g1)
+    # fig.savefig("here.png")
+    
     # Initialize optimizer and scheduler(?)
-    scheduler, optimizer = build_optimizer(args, model.parameters())
+    optimizer = build_optimizer2(args, model.parameters())
 
     # Split data into train and test
     train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)

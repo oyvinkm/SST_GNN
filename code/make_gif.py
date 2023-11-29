@@ -11,6 +11,7 @@ import warnings
 import sys
 from loguru import logger
 import copy
+sys.path.append('../')
 
 day = datetime.now().strftime("%d-%m-%y")
 def none_or_str(value):
