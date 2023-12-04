@@ -13,16 +13,14 @@ from loguru import logger
 from sklearn.model_selection import train_test_split
 from torch_geometric import transforms as T
 from torch_geometric.loader import DataLoader
-
+sys.path.append('Model')
+sys.path.append('utils')
 from dataprocessing.dataset import MeshDataset
-from mask import AttributeMask
-from utils.visualization import plot_dual_mesh
-from model.model import MultiScaleAutoEncoder
-# from newmodel import MultiScaleAutoEncoder
+from utils.visualization import plot_dual_mesh, make_gif
+from Model.model import MultiScaleAutoEncoder
 from utils.opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
-sys.path.append('../')
 
 def none_or_str(value):
     if value.lower() == "none":
@@ -50,60 +48,68 @@ def t_or_f(value):
     else:
        logger.CRITICAL("boolean argument incorrect")
 
-day = datetime.now().strftime("%d-%m-%y")
+def apply_transform(args):
+    logger.info("Applying Transformation")
+    args.time_stamp += "_transform"
+    main() 
+    logger.info("transform done")
+    args.load_model = True
+    args.model_file = f"model_{args.time_stamp}.pt"
+    args.transform = False
+    args.time_stamp += "_post_transform"
+    return args
 
+day = datetime.now().strftime("%d-%m-%y")
 parser = argparse.ArgumentParser()
+parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
+parser.add_argument('-ae_layers', type=int, default=3)
+parser.add_argument('-batch_size', type=int, default=1)
 parser.add_argument('-data_dir', type=str, default='data/cylinder_flow/')
-parser.add_argument('-save_args_dir', type=str, default='args/'+day)
-parser.add_argument('-save_visualize_dir', type=str, default='visualizations/'+day)
-parser.add_argument('-save_mesh_dir', type=str, default='meshes/'+day)
-parser.add_argument('-save_accuracy_dir', type=str, default='accuracies/'+day)
-parser.add_argument('-pool_strat', type=str, default='ASA')
-parser.add_argument('-opt', type=str, default='adam')
-parser.add_argument('-opt_scheduler', type=str, default='step')
-parser.add_argument('-save_model_dir', type=str, default='model_chkpoints/'+day)
-parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
+parser.add_argument('-epochs', type=int, default=1)
+parser.add_argument('-edge_conv', type=t_or_f, default=False)
+parser.add_argument('-hidden_dim', type=int, default=32)
+parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-logger_lvl', type=str, default='DEBUG')
 parser.add_argument('-loss', type=none_or_str, default='LMSE')
-parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
-parser.add_argument('-transform', type=t_or_f, default=False)
+parser.add_argument('-load_model', type=t_or_f, default=False)
+parser.add_argument('-loss_step', type=int, default=20)
+parser.add_argument('-log_step', type=int, default=20)
+parser.add_argument('-latent_dim', type=int, default=128)
+parser.add_argument('-lr', type=float, default=1e-4)
+parser.add_argument('-make_gif', type=t_or_f, default=False)
+parser.add_argument('-model_file', type=str, default="model_2023_11_27-13.33_ae_layers-3_hidden_dim-64_latent_dim-128_pool_strat-SAG.pt")
+parser.add_argument('-mpl_ratio', type=float, default=0.8)
+parser.add_argument('-mpl_layers', type=int, default=1)
 parser.add_argument('-normalize', type=t_or_f, default=False)
+parser.add_argument('-num_blocks', type=int, default=1)
+parser.add_argument('-num_workers', type=int, default=1)
+parser.add_argument('-n_nodes', type=int, default=1876)
+parser.add_argument('-opt', type=str, default='adam')
+parser.add_argument('-out_feature_dim', type=none_or_int, default=11)
+parser.add_argument('-pool_strat', type=str, default='ASA')
+parser.add_argument('-progress_bar', type=t_or_f, default=False)
+parser.add_argument('-random_search', type=t_or_f, default=False)
+parser.add_argument('-residual', type=t_or_f, default=True)
+parser.add_argument('-save_args_dir', type=str, default='args/'+day)
+parser.add_argument('-save_visualize_dir', type=str, default='logs/visualizations/'+day)
+parser.add_argument('-save_mesh_dir', type=str, default='logs/meshes/'+day)
+parser.add_argument('-save_accuracy_dir', type=str, default='logs/accuracies/'+day)
+parser.add_argument('-save_model_dir', type=str, default='logs/model_chkpoints/'+day)
+parser.add_argument('-save_gif_dir', type=str, default='logs/gifs/'+day)
 parser.add_argument('-shuffle', type=t_or_f, default=True)
 parser.add_argument('-save_plot', type=t_or_f, default=True)
 parser.add_argument('-save_model', type=t_or_f, default=True)
 parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
-parser.add_argument('-edge_conv', type=t_or_f, default=False)
-parser.add_argument('-load_model', type=t_or_f, default=False)
-parser.add_argument('-model_file', type=str, default="model_2023_11_27-13.33_ae_layers-3_hidden_dim-64_latent_dim-128_pool_strat-SAG.pt")
-parser.add_argument('-loss_step', type=int, default=20)
-parser.add_argument('-log_step', type=int, default=20)
+parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
+parser.add_argument('-transform', type=t_or_f, default=False)
+parser.add_argument('-transform_p', type=float, default=0.1)
+parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
 parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
-parser.add_argument('-mpl_ratio', type=float, default=0.8)
-parser.add_argument('-lr', type=float, default=1e-5)
 parser.add_argument('-weight_decay', type=float, default=0.0005)
-parser.add_argument('-opt_decay_rate', type=float, default=0.1)
-parser.add_argument('-transform_p', type=float, default=0.1)
-parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
-parser.add_argument('-instance_id', type=int, default=1)
-parser.add_argument('-batch_size', type=int, default=1)
-parser.add_argument('-residual', type=t_or_f, default=True)
-parser.add_argument('-epochs', type=int, default=1)
-parser.add_argument('-ae_layers', type=int, default=3)
-parser.add_argument('-hidden_dim', type=int, default=32)
-parser.add_argument('-mpl_layers', type=int, default=1)
-parser.add_argument('-num_blocks', type=int, default=1)
-parser.add_argument('-opt_decay_step', type=int, default=30)
-parser.add_argument('-opt_restart', type=int, default=10)
-parser.add_argument('-num_workers', type=int, default=1)
-parser.add_argument('-out_feature_dim', type=none_or_int, default=11)
-parser.add_argument('-latent_dim', type=int, default=128)
-parser.add_argument('-progress_bar', type=t_or_f, default=False)
-parser.add_argument('-n_nodes', type=int, default=1876)
 args = parser.parse_args()
-
 
 def main():
     # args.transform = 'Attribute'
@@ -132,24 +138,23 @@ def main():
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs)
-    model_path = os.path.join(args.save_model_dir , args.model_file)
+    model = model.to(args.device)
     if args.load_model:
+        model_path = os.path.join(args.save_model_dir , args.model_file)
         logger.info("Loading model")
-        assert os.path.isfile(model_path)
+        logger.debug(f"{model_path}")
+        assert os.path.isfile(model_path), "model file does not exist"
         model.load_state_dict(torch.load(model_path))
         logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
     
-    
-    # input = torch.ones((1, 128, 1))
-    # graph = model.decoder(model.placeholder, input.to(args.device))
-    # g1 = dataset[0]
-    # g2 = g1.clone()
-    # g2.x = graph.x
-    # fig = plot_dual_mesh(g2, g1)
-    # fig.savefig("here.png")
-    
+    if args.make_gif:
+        make_gif(model, dataset, args)
+        exit()
+
     # Initialize optimizer and scheduler(?)
-    optimizer = build_optimizer2(args, model.parameters())
+    optimizer = build_optimizer(args, model.parameters())
+
+    dataset = dataset[:250] # The rest of the dataset have little variation
 
     # Split data into train and test
     train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
@@ -164,7 +169,6 @@ def main():
         Test size : {len(test_data)}"
     )
     # Create Dataloaders for train, test and validation
-    # TODO: transform in dataloader
     train_loader = DataLoader(
         train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
@@ -197,10 +201,6 @@ def main():
     test_loss = test(model=model, test_loader=test_loader, args=args)
     logger.debug(test_loss)
 
-
-# TESTING
-# test()
-
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", ".*Sparse CSR tensor support is in beta state.*")
     logger.remove(0)
@@ -220,12 +220,35 @@ if __name__ == "__main__":
 
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     logger.info(f"CUDA has version: {torch.version.cuda}")
-    if args.transform:
-        logger.info("Applying Transformation")
-        args.time_stamp += "transform"
+    if not args.random_search:
+        if args.transform:
+            # apply the transform to the data and run the model
+            args = apply_transform(args)
+        # run the model with the applied args
         main()
-        args.load_model = True
-        args.model_file = f"model_{args.time_stamp}"
-        args.transform = False
-        args.time_stamp += "-Post_transform"
-    main()
+
+    else:
+        param_grid = {
+                'hidden_dim' : [8, 16, 32],
+                'latent_dim': [64, 128, 256], 
+                'ae_layers': [2, 3, 4],
+                'num_blocks': [1, 2, 3],
+                'pool_strat' : ['SAG', 'ASA'],
+                }
+        lst = list(ParameterGrid(param_grid))
+        my_bool = args.transform
+
+        while True:
+            rand_args = choice(lst)
+            lst.remove(rand_args)
+            args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
+            for key in rand_args.keys():
+                args.__dict__[key] = rand_args[key]
+                args.time_stamp += "_" + key + "-" + str(rand_args[key])
+            if args.transform:
+                args = apply_transform(args)
+            logger.success(f"Doing the following config: {args.time_stamp}")
+            main()
+            logger.success("Done")
+            args.transform = my_bool
+    logger.success("process_done")

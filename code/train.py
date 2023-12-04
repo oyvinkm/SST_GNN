@@ -57,7 +57,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             b_data = transform_batch(batch, args)
             optimizer.zero_grad()  # zero gradients each time
             pred, kl = model(b_data)
-            rec_loss = criterion(pred.x, batch.x)
+            rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
             loss = beta*kl + rec_loss
             loss.backward()  # backpropagate loss
             optimizer.step()

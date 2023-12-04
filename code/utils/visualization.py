@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch_geometric.data import Batch, Data
 import torch
 import copy
 from torch import Tensor
@@ -42,11 +43,11 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
     input gs is a dataloader and each entry contains attributes of many timesteps.
 
     '''
-    print('Generating velocity fields...')
+    logger.info('Generating velocity fields...')
     fig, axes = plt.subplots(3, 1, figsize=(20, 16))
     num_steps = len(gs) # for a single trajectory
     num_frames = num_steps // skip
-    print(num_steps)
+    logger.info(f"length of trajectory: {num_steps}")
     def animate(num):
         step = (num*skip) % num_steps
         traj = 0
@@ -87,12 +88,11 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
             triang = mtri.Triangulation(pos[:, 0], pos[:, 1], faces)
             if (count <= 1):
                 # absolute values
-                
-                mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
+                mesh_plot = ax.tripcolor(triang, velocity[:, 0].cpu(), vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
                 ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
             else:
                 # error: (pred - gs)/gs
-                mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min_evl, vmax=bb_max_evl, shading='flat' ) # x-velocity
+                mesh_plot = ax.tripcolor(triang, velocity[:, 0].cpu(), vmin= bb_min_evl, vmax=bb_max_evl, shading='flat' ) # x-velocity
                 ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
                 #ax.triplot(triang, lw=0.5, color='0.5')
 
@@ -122,6 +122,22 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
         plt.show(block=True)
     else:
         pass
+
+def make_gif(model, dataset, args):
+    assert args.load_model, "you cannot make a gif if you're not going to load a model"
+    PRED = copy.deepcopy(dataset)
+    GT = copy.deepcopy(dataset)
+    DIFF = copy.deepcopy(dataset)
+    for pred_data, gt_data, diff_data in zip(PRED, GT, DIFF):
+        with torch.no_grad():
+            pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
+            pred_data.x = pred.x
+            diff_data.x = pred_data.x - gt_data.x.to(args.device)
+    logger.info("processing done...")
+    gif_name = args.model_file + "anim.gif"
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 25)
+    logger.success("gif complete...")
+
 
 def draw_graph(g, save = False, args = None):
   """Draws the graph given"""
