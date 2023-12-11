@@ -18,3 +18,4 @@ code/logs/
 code/spec_test.py
 code/test.ipynb
 code/test.py
+.gitignore
