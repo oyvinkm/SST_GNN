@@ -284,3 +284,23 @@ def plot_loss(train_loss=None, train_label = 'Rotate',
         plt.savefig(PATH)
     
     return fig, ax
+
+def plot_test_loss(test_loss, ts, test_label = 'test loss', 
+                   label="Loss", title = 'Loss / T', PATH = None):
+    """
+    Takes a list of training and/or validation metrics and plots them
+    Returns: plt.figure and ax objects
+    """
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111)
+    # ax.plot(ts, test_loss, linewidth = .8, label=test_label, color="dodgerblue")
+    ax.scatter(ts, test_loss, linewidth = .8, label=test_label, edgecolors="dodgerblue")
+    ax.set_xlabel("t")
+    ax.set_ylabel(label)
+    ax.legend(loc=0)
+    ax.grid(True)
+    fig.suptitle(title)
+    if PATH is not None:
+        plt.savefig(PATH)
+    
+    return fig, ax

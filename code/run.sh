@@ -8,11 +8,12 @@ python run.py \
     -ae_layers 2 \
     -batch_size 16 \
     -edge_conv True \
-    -epochs 101 \
+    -epochs 201 \
     -hidden_dim 32 \
     -instance_id 1 \
+    -latent_space True \
     -loss_step 50 \
-    -log_step 20 \
+    -log_step 50 \
     -lr 1e-4 \
     -latent_dim 128 \
     -logger_lvl DEBUG \
@@ -45,6 +46,6 @@ python run.py \
     -test_ratio 0.1 \
     -transform_p 0.3 \
     -time_stamp $now \
-    -transform True \
+    -transform False \
     -val_ratio 0.1 \
     -weight_decay 0.0005 \
