@@ -16,7 +16,7 @@ from torch_geometric.loader import DataLoader
 sys.path.append('Model')
 sys.path.append('utils')
 from dataprocessing.dataset import MeshDataset
-from utils.visualization import make_gif
+from utils.visualization import plot_dual_mesh, make_gif, plot_test_loss
 from Model.model import MultiScaleAutoEncoder
 from utils.opt import build_optimizer
 from train import test, train
@@ -71,6 +71,7 @@ parser.add_argument('-epochs', type=int, default=101)
 parser.add_argument('-edge_conv', type=t_or_f, default=False)
 parser.add_argument('-hidden_dim', type=int, default=32)
 parser.add_argument('-instance_id', type=int, default=1)
+parser.add_argument('-latent_space', type=t_or_f, default=True)
 parser.add_argument('-logger_lvl', type=str, default='DEBUG')
 parser.add_argument('-loss', type=none_or_str, default='LMSE')
 parser.add_argument('-load_model', type=t_or_f, default=False)
@@ -98,6 +99,7 @@ parser.add_argument('-save_mesh_dir', type=str, default='logs/meshes/'+day)
 parser.add_argument('-save_accuracy_dir', type=str, default='logs/accuracies/'+day)
 parser.add_argument('-save_model_dir', type=str, default='logs/model_chkpoints/'+day)
 parser.add_argument('-save_gif_dir', type=str, default='logs/gifs/'+day)
+parser.add_argument('-save_loss_over_t_dir', type=str, default='logs/loss_over_t/'+day)
 parser.add_argument('-shuffle', type=t_or_f, default=True)
 parser.add_argument('-save_plot', type=t_or_f, default=True)
 parser.add_argument('-save_model', type=t_or_f, default=True)
@@ -139,6 +141,8 @@ def main():
     )
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
+    if not args.latent_space:
+        logger.warning("Model is not going into latent_space")
     model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs)
     model = model.to(args.device)
     if args.load_model:
@@ -174,7 +178,7 @@ def main():
     train_loader = DataLoader(
         train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
-    val_loader = DataLoader(val_data, batch_size=args.batch_size, shuffle=False)
+    val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 
     # TRAINING
@@ -191,6 +195,8 @@ def main():
         loss_name = "loss_" + args.time_stamp
         if not os.path.isdir(args.save_plot_dir):
             os.mkdir(args.save_plot_dir)
+        if not os.path.isdir(args.save_loss_over_t_dir):
+            os.mkdir(args.save_loss_over_t_dir)
         PATH = os.path.join(args.save_plot_dir, f"{loss_name}.png")
         plot_loss(
             train_loss=train_losses,
@@ -199,9 +205,11 @@ def main():
             val_label="Validation Loss",
             PATH=PATH,
         )
+        test_loss, loss_over_t, ts = test(model=model, test_loader=test_loader, args=args)
+        loss_name = "loss-over-t_" + args.time_stamp
+        PATH = os.path.join(args.save_loss_over_t_dir, f"{loss_name}.png")
+        plot_test_loss(loss_over_t, ts, PATH=PATH)
 
-    test_loss = test(model=model, test_loader=test_loader, args=args)
-    logger.debug(test_loss)
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", ".*Sparse CSR tensor support is in beta state.*")

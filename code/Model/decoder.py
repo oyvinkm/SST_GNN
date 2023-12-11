@@ -62,8 +62,9 @@ class Decoder(nn.Module):
         return z
 
     def forward(self, b_data, z):
-        z_x = self.from_latent_vec(z)
-        b_data.x = z_x
+        if self.args.latent_space:
+            z_x = self.from_latent_vec(z)
+            b_data.x = z_x
         b_data = self.mpl_bottom(b_data)
         for i in range(self.ae_layers):
            b_data = self.layers[i](b_data)

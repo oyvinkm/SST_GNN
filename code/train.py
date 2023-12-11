@@ -114,7 +114,6 @@ def validate(model, val_loader, criterion, epoch, args):
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
-
     total_loss /= idx
     return total_loss
 
@@ -127,7 +126,9 @@ def test(model, test_loader, args):
     """
     kld = nn.KLDivLoss(reduction="batchmean")
 
-    criterion = LMSELoss()
+    loss_over_t = []
+    ts = []
+    criterion = MSELoss()
     total_loss = 0
     total_accuracy = 0
     model.eval()
@@ -144,12 +145,14 @@ def test(model, test_loader, args):
             save_mesh(pred, batch, 'test', args)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
-        total_accuracy += kld(input=pred.x, target=batch.x).item()
+        # total_accuracy += kld(input=pred.x, target=batch.x).item()
+        loss_over_t.append(loss.item())
+        ts.append(batch.t.cpu())
 
     total_loss /= idx
     total_accuracy /= idx
-    save_accuracy(total_accuracy, args)
-    return total_loss
+    # save_accuracy(total_accuracy, args)
+    return total_loss, loss_over_t, ts
 
 def save_accuracy(accuracy, args):
     if not os.path.isdir(args.save_accuracy_dir):
