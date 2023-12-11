@@ -16,11 +16,13 @@ from torch_geometric.loader import DataLoader
 sys.path.append('Model')
 sys.path.append('utils')
 from dataprocessing.dataset import MeshDataset
-from utils.visualization import plot_dual_mesh, make_gif
+from utils.visualization import make_gif
 from Model.model import MultiScaleAutoEncoder
 from utils.opt import build_optimizer
 from train import test, train
 from utils.visualization import plot_loss
+from sklearn.model_selection import ParameterGrid
+from random import choice
 
 def none_or_str(value):
     if value.lower() == "none":
@@ -65,7 +67,7 @@ parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-ae_layers', type=int, default=3)
 parser.add_argument('-batch_size', type=int, default=1)
 parser.add_argument('-data_dir', type=str, default='data/cylinder_flow/')
-parser.add_argument('-epochs', type=int, default=1)
+parser.add_argument('-epochs', type=int, default=101)
 parser.add_argument('-edge_conv', type=t_or_f, default=False)
 parser.add_argument('-hidden_dim', type=int, default=32)
 parser.add_argument('-instance_id', type=int, default=1)
@@ -90,7 +92,7 @@ parser.add_argument('-pool_strat', type=str, default='ASA')
 parser.add_argument('-progress_bar', type=t_or_f, default=False)
 parser.add_argument('-random_search', type=t_or_f, default=False)
 parser.add_argument('-residual', type=t_or_f, default=True)
-parser.add_argument('-save_args_dir', type=str, default='args/'+day)
+parser.add_argument('-save_args_dir', type=str, default='logs/args/'+day)
 parser.add_argument('-save_visualize_dir', type=str, default='logs/visualizations/'+day)
 parser.add_argument('-save_mesh_dir', type=str, default='logs/meshes/'+day)
 parser.add_argument('-save_accuracy_dir', type=str, default='logs/accuracies/'+day)
@@ -103,7 +105,7 @@ parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
 parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
-parser.add_argument('-transform', type=t_or_f, default=False)
+parser.add_argument('-transform', type=t_or_f, default=True)
 parser.add_argument('-transform_p', type=float, default=0.1)
 parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
 parser.add_argument('-test_ratio', type=float, default=0.2)
@@ -117,9 +119,9 @@ def main():
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
     # https://pytorch.org/docs/stable/notes/randomness.html
-    torch.manual_seed(5)  # Torch
-    random.seed(5)  # Python
-    np.random.seed(5)  # NumPy
+    # torch.manual_seed(5)  # Torch
+    # random.seed(5)  # Python
+    # np.random.seed(5)  # NumPy
 
     # Set device to cuda if availale
     if torch.cuda.is_available():

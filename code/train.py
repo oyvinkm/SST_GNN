@@ -11,7 +11,7 @@ from loguru import logger
 from torch import nn
 from torch.nn import MSELoss
 from tqdm import trange
-from mask import AttributeMask
+from utils.transforms import AttributeMask, FlipGraph
 from torch.nn import functional as F
 from torch_geometric import transforms as T
 from matplotlib import pyplot as plt
@@ -40,6 +40,7 @@ def train(model, train_loader, val_loader, optimizer, args):
         manager = enlighten.get_manager()
         epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
     for epoch in range(args.epochs):
+        logger.info(f"epoch : {epoch}")
         if args.progress_bar:
             epochs.update()
             batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
@@ -162,7 +163,7 @@ def save_accuracy(accuracy, args):
 
 def transform_batch(b_data, args):
     if args.transform:
-        transforms = T.Compose([AttributeMask(args.transform_p, args.device)])
+        transforms = T.Compose([FlipGraph(), AttributeMask(args.transform_p, args.device)])
         trsfmd = transforms(b_data.clone())
         return trsfmd
     else:

@@ -31,7 +31,7 @@ def save_plots(args, losses, test_losses, velo_val_losses):
     plt.title('Losses Plot')
     plt.plot(losses, label="training loss" + " - " + args.model_type)
     plt.plot(test_losses, label="test loss" + " - " + args.model_type)
-    plt.grid(true)
+    plt.grid(True)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
 
