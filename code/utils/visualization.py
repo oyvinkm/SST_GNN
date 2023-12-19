@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch_geometric.data import Batch, Data
 import torch
 import copy
 from torch import Tensor
@@ -30,7 +31,7 @@ def save_plots(args, losses, test_losses, velo_val_losses):
     plt.title('Losses Plot')
     plt.plot(losses, label="training loss" + " - " + args.model_type)
     plt.plot(test_losses, label="test loss" + " - " + args.model_type)
-    plt.grid(true)
+    plt.grid(True)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
 
@@ -42,11 +43,11 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
     input gs is a dataloader and each entry contains attributes of many timesteps.
 
     '''
-    print('Generating velocity fields...')
+    logger.info('Generating velocity fields...')
     fig, axes = plt.subplots(3, 1, figsize=(20, 16))
     num_steps = len(gs) # for a single trajectory
     num_frames = num_steps // skip
-    print(num_steps)
+    logger.info(f"length of trajectory: {num_steps}")
     def animate(num):
         step = (num*skip) % num_steps
         traj = 0
@@ -87,12 +88,11 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
             triang = mtri.Triangulation(pos[:, 0], pos[:, 1], faces)
             if (count <= 1):
                 # absolute values
-                
-                mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
+                mesh_plot = ax.tripcolor(triang, velocity[:, 0].cpu(), vmin= bb_min, vmax=bb_max,  shading='flat' ) # x-velocity
                 ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
             else:
                 # error: (pred - gs)/gs
-                mesh_plot = ax.tripcolor(triang, velocity[:, 0], vmin= bb_min_evl, vmax=bb_max_evl, shading='flat' ) # x-velocity
+                mesh_plot = ax.tripcolor(triang, velocity[:, 0].cpu(), vmin= bb_min_evl, vmax=bb_max_evl, shading='flat' ) # x-velocity
                 ax.triplot(triang, 'ko-', ms=0.5, lw=0.3)
                 #ax.triplot(triang, lw=0.5, color='0.5')
 
@@ -122,6 +122,22 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
         plt.show(block=True)
     else:
         pass
+
+def make_gif(model, dataset, args):
+    assert args.load_model, "you cannot make a gif if you're not going to load a model"
+    PRED = copy.deepcopy(dataset)
+    GT = copy.deepcopy(dataset)
+    DIFF = copy.deepcopy(dataset)
+    for pred_data, gt_data, diff_data in zip(PRED, GT, DIFF):
+        with torch.no_grad():
+            pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
+            pred_data.x = pred.x
+            diff_data.x = pred_data.x - gt_data.x.to(args.device)
+    logger.info("processing done...")
+    gif_name = args.model_file + "anim.gif"
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 25)
+    logger.success("gif complete...")
+
 
 def draw_graph(g, save = False, args = None):
   """Draws the graph given"""
@@ -260,6 +276,26 @@ def plot_loss(train_loss=None, train_label = 'Rotate',
     if extra_loss is not None:
         ax.plot(epochs, extra_loss, linewidth = .8, label=extra_label, color="darkred")
     ax.set_xlabel("Epoch")
+    ax.set_ylabel(label)
+    ax.legend(loc=0)
+    ax.grid(True)
+    fig.suptitle(title)
+    if PATH is not None:
+        plt.savefig(PATH)
+    
+    return fig, ax
+
+def plot_test_loss(test_loss, ts, test_label = 'test loss', 
+                   label="Loss", title = 'Loss / T', PATH = None):
+    """
+    Takes a list of training and/or validation metrics and plots them
+    Returns: plt.figure and ax objects
+    """
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111)
+    # ax.plot(ts, test_loss, linewidth = .8, label=test_label, color="dodgerblue")
+    ax.scatter(ts, test_loss, linewidth = .8, label=test_label, edgecolors="dodgerblue")
+    ax.set_xlabel("t")
     ax.set_ylabel(label)
     ax.legend(loc=0)
     ax.grid(True)

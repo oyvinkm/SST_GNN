@@ -11,7 +11,7 @@ from loguru import logger
 from torch import nn
 from torch.nn import MSELoss
 from tqdm import trange
-from mask import AttributeMask
+from utils.transforms import AttributeMask, FlipGraph
 from torch.nn import functional as F
 from torch_geometric import transforms as T
 from matplotlib import pyplot as plt
@@ -40,6 +40,7 @@ def train(model, train_loader, val_loader, optimizer, args):
         manager = enlighten.get_manager()
         epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
     for epoch in range(args.epochs):
+        logger.info(f"epoch : {epoch}")
         if args.progress_bar:
             epochs.update()
             batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
@@ -57,7 +58,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             b_data = transform_batch(batch, args)
             optimizer.zero_grad()  # zero gradients each time
             pred, kl = model(b_data)
-            rec_loss = criterion(pred.x, batch.x)
+            rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
             loss = beta*kl + rec_loss
             loss.backward()  # backpropagate loss
             optimizer.step()
@@ -113,7 +114,6 @@ def validate(model, val_loader, criterion, epoch, args):
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
-
     total_loss /= idx
     return total_loss
 
@@ -126,7 +126,9 @@ def test(model, test_loader, args):
     """
     kld = nn.KLDivLoss(reduction="batchmean")
 
-    criterion = LMSELoss()
+    loss_over_t = []
+    ts = []
+    criterion = MSELoss()
     total_loss = 0
     total_accuracy = 0
     model.eval()
@@ -143,12 +145,14 @@ def test(model, test_loader, args):
             save_mesh(pred, batch, 'test', args)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
-        total_accuracy += kld(input=pred.x, target=batch.x).item()
+        # total_accuracy += kld(input=pred.x, target=batch.x).item()
+        loss_over_t.append(loss.item())
+        ts.append(batch.t.cpu())
 
     total_loss /= idx
     total_accuracy /= idx
-    save_accuracy(total_accuracy, args)
-    return total_loss
+    # save_accuracy(total_accuracy, args)
+    return total_loss, loss_over_t, ts
 
 def save_accuracy(accuracy, args):
     if not os.path.isdir(args.save_accuracy_dir):
@@ -162,7 +166,7 @@ def save_accuracy(accuracy, args):
 
 def transform_batch(b_data, args):
     if args.transform:
-        transforms = T.Compose([AttributeMask(args.transform_p, args.device)])
+        transforms = T.Compose([FlipGraph(), AttributeMask(args.transform_p, args.device)])
         trsfmd = transforms(b_data.clone())
         return trsfmd
     else:

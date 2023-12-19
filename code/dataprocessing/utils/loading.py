@@ -115,7 +115,7 @@ def loadh5py(filename, no_trajectories = 1, save = False, save_folder = None):
               mesh_pos=torch.tensor(np.array(data[trajectory]['pos'][ts]))
               w = x.new_ones(x.shape[0], 1)
               data_list.append(Data(x=x, edge_index=edge_index, edge_attr=edge_attr,y=y,p=p,
-                                    cells=cells, weights = w, mesh_pos=mesh_pos))
+                                    cells=cells, weights = w, mesh_pos=mesh_pos, t=ts))
           if save:
             file = f'trajectory_{i}'
             save_data_list(data_list, file, save_folder)

@@ -12,3 +12,13 @@ code/18-11-23/
 code/model/
 code/accuracies
 code/gifs/
+code/deprecated/
+code/logs
+code/latent_space_exploration/
+code/save_trajectories.py
+code/constructargs.py
+code/flip_test/
+code/spec_test.py
+code/test.ipynb
+code/test.py
+.gitignore
