@@ -48,6 +48,8 @@ def _BFS_dist_all(adj_list, n_nodes):
 def _adj_mat_to_flat_edge(adj_mat):
     if isinstance(adj_mat, np.ndarray):
         s, r = np.where(adj_mat.astype(bool))
+        print(s.shape)
+        print(r.shape)
     else:
         print(f'tobe implemented _adj_mat_to_flat_edge, type : {type(adj_mat)}')
         exit(1)
@@ -69,7 +71,7 @@ def pool_edge(g, idx, num_nodes):
     e_idx = np.where(both_valid)[0]
     new_g = new_g[:, e_idx]
 
-    return new_g
+    return new_g, e_idx
 
 def _min_ave_seed(adj_list, clusters):
     seeds = []
@@ -190,28 +192,30 @@ def bstride_selection(flat_edge, n_nodes, pos_mesh = None):
             index_kept = index_kept.union(delta_idx)
 
         combined_idx_kept = combined_idx_kept.union(index_kept)
-
+    # TODO: UNDERSTAND THIS SHIT! 
     combined_idx_kept = list(combined_idx_kept)
     adj_mat = adj_mat.tocsr().astype(float)
     adj_mat = adj_mat@adj_mat
     adj_mat.setdiag(0)
-    adj_mat = pool_edge(adj_mat, combined_idx_kept, n_nodes)
+    adj_mat, e_idx = pool_edge(adj_mat, combined_idx_kept, n_nodes)
 
-    return combined_idx_kept, adj_mat
+    return combined_idx_kept, adj_mat, e_idx
 
 
 def generate_multi_layer_stride(flat_edge, num_l, n, pos_mesh = None):
     m_gs = [flat_edge]
+    e_s = []
     m_ids = []
     g = flat_edge
     for l in range(num_l):
         n_l = n if l == 0 else len(index_to_keep)
-        index_to_keep, g = bstride_selection(g, n_nodes=n_l, pos_mesh=pos_mesh)
+        index_to_keep, g, e_idx = bstride_selection(g, n_nodes=n_l, pos_mesh=pos_mesh)
         #pos_mesh = pos_mesh[index_to_keep]
-        m_gs.append(g)
+        m_gs.append(torch.tensor(g))
+        e_s.append(e_idx)
         m_ids.append(index_to_keep)
 
-    return m_gs, m_ids
+    return m_gs, m_ids, e_s
 
 # Used in dataset class
 """ def _cal_multi_mesh(fields, cells, args):

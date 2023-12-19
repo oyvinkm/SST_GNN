@@ -8,7 +8,7 @@ from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
 from torch_scatter import scatter
 from loguru import logger
-from utility import MessagePassingLayer, GCNConv, WeightedEdgeConv, MessagePassingBlock, MessagePassingEdgeConv
+from .utility import MessagePassingEdgeConv, ProcessorLayer, pool_edge
 
 class Encoder(nn.Module):
     def __init__(self, args, m_ids, m_gs):
@@ -19,6 +19,7 @@ class Encoder(nn.Module):
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
         self.in_dim_node = args.in_dim_node
+        self.in_dim_edge = args.in_dim_edge
         self.latent_vec_dim = len(m_ids[-1])
         self.b = args.batch_size
         self.layers = nn.ModuleList()
@@ -29,6 +30,11 @@ class Encoder(nn.Module):
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
+        self.edge_encoder = Sequential(Linear(self.in_dim_edge , self.hidden_dim),
+                              ReLU(),
+                              Linear( self.hidden_dim, self.hidden_dim),
+                              LayerNorm(self.hidden_dim)
+                              )
         for i in range(self.ae_layers):
             
             self.layers.append(Res_down(
@@ -50,8 +56,8 @@ class Encoder(nn.Module):
                         Linear(64, 1))
 
     def forward(self, b_data, Train = True):
-        x = b_data.x
-        b_data.x = self.node_encoder(x)
+        b_data.x = self.node_encoder(b_data.x)
+        b_data.edge_attr = self.edge_encoder(b_data.edge_attr)
         self.b = len(torch.unique(b_data.batch))
 
         for i in range(self.ae_layers): 
@@ -95,10 +101,10 @@ class Res_down(nn.Module):
         self.m_id = m_id
         self.m_g = m_g
         self.args = args
-        self.mpl1 = MessagePassingEdgeConv(channel_in, channel_out//2, args)
-        self.mpl2 = MessagePassingEdgeConv(channel_out // 2, channel_out, args)
+        self.mpl1 = ProcessorLayer(channel_in, channel_out//2)
+        self.mpl2 = ProcessorLayer(channel_out // 2, channel_out)
         self.act1 = nn.ReLU()
-        self.mpl_skip = MessagePassingEdgeConv(channel_in, channel_out, args) # skip
+        self.mpl_skip = ProcessorLayer(channel_in, channel_out) # skip
         self.act2 = nn.ReLU()
 
     def _bi_pool_batch(self, b_data):
@@ -111,7 +117,8 @@ class Res_down(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = data.x[mask]
             data.weights = data.weights[mask]
-            data.edge_index = g
+            data.edge_index, data.edge_attr = pool_edge(mask, g, data.edge_attr)
+            #data.edge_index = g
             data_lst.append(data)
         return Batch.from_data_list(data_lst).to(self.args.device) 
     
@@ -122,6 +129,7 @@ class Res_down(nn.Module):
         b_data = self._bi_pool_batch(b_data)
         b_data = self.mpl2(b_data)
         b_data.x = self.act1(b_data.x + b_skip.x)
+        b_data.edge_attr = self.act2(b_data.edge_attr + b_skip.edge_attr)
         return b_data
 
 

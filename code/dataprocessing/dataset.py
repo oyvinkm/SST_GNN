@@ -54,17 +54,18 @@ class MeshDataset(Dataset):
       if not mmexist:
           edge_i = self.traj_data[0].edge_index
           n = self.traj_data[0].x.shape[0]
-          m_gs, m_ids = generate_multi_layer_stride(edge_i,
+          m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
                                                     self.layer_num,
                                                     n=n,
                                                     pos_mesh=None)
-          m_mesh = {'m_gs': m_gs, 'm_ids': m_ids}
+          m_mesh = {'m_gs': m_gs, 'm_ids': m_ids, 'e_s' : e_s}
           pickle.dump(m_mesh, open(mmfile, 'wb'))
       else:
           m_mesh = pickle.load(open(mmfile, 'rb'))
-          m_gs, m_ids = m_mesh['m_gs'], m_mesh['m_ids']
+          m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
       self.m_ids = m_ids
       self.m_gs = m_gs
+      self.e_s = e_s
 
 
 

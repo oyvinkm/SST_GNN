@@ -8,7 +8,7 @@ from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
 from torch_scatter import scatter
 from loguru import logger
-from utility import MessagePassingLayer, GCNConv, WeightedEdgeConv, MessagePassingBlock, MessagePassingEdgeConv
+from .utility import MessagePassingEdgeConv, ProcessorLayer, pool_edge
 
 class Decoder(nn.Module):
     def __init__(self, args, m_ids, m_gs):
@@ -91,9 +91,9 @@ class Res_up(nn.Module):
         self.m_g = m_g
         self.args = args
         self.up_nodes = up_nodes
-        self.mpl1 = MessagePassingEdgeConv(channel_in=channel_in, channel_out=channel_out//2, args = args)
-        self.mpl2 = MessagePassingEdgeConv(channel_in=channel_out//2, channel_out = channel_out, args = args)
-        self.mpl_skip = MessagePassingEdgeConv(channel_in=channel_in, channel_out=channel_out, args = args)
+        self.mpl1 = ProcessorLayer(in_channels=channel_in, out_channels=channel_out//2)
+        self.mpl2 = ProcessorLayer(in_channels=channel_out//2, out_channels=channel_out)
+        self.mpl_skip = ProcessorLayer(in_channels=channel_in, out_channels=channel_out)
         self.unpool = Unpool()
         self.act1 = nn.LeakyReLU()
     
@@ -106,7 +106,8 @@ class Res_up(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = self.unpool(data.x, self.up_nodes, mask)
             data.weights = self.unpool(data.weights, self.up_nodes, mask)
-            data.edge_index = g
+            data.edge_index, data.edge_attr = pool_edge(np.arange(self.up_nodes), g, data.edge_attr)
+            #data.edge_index = g
             batch_lst.append(data)
         b_data = Batch.from_data_list(batch_lst).to(self.args.device)
         return b_data
