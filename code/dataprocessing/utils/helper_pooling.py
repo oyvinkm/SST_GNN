@@ -48,8 +48,6 @@ def _BFS_dist_all(adj_list, n_nodes):
 def _adj_mat_to_flat_edge(adj_mat):
     if isinstance(adj_mat, np.ndarray):
         s, r = np.where(adj_mat.astype(bool))
-        print(s.shape)
-        print(r.shape)
     else:
         print(f'tobe implemented _adj_mat_to_flat_edge, type : {type(adj_mat)}')
         exit(1)

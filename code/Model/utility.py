@@ -1,13 +1,12 @@
 import numpy as np
+import scipy
 import torch
 from torch import nn
-from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
-from torch_geometric.data import Batch, Data
+from torch.nn import LayerNorm, Linear, ReLU, Sequential
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree, coalesce
+from torch_geometric.utils import degree, coalesce,to_dense_adj, contains_isolated_nodes
 from torch_scatter import scatter
-from loguru import logger
 
 def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
     r"""Pools the edges of a graph to a new set of edges using the idxHR_to_idxLR mapping.
@@ -27,6 +26,51 @@ def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
     if edge_index.numel() > 0:
         edge_index, edge_attr = coalesce(edge_index, edge_attr, num_nodes, reduce=aggr) # aggregate edges
     return edge_index, edge_attr
+
+
+
+def _adj_mat_to_flat_edge(adj_mat):
+  if len(adj_mat.shape) == 2:
+    s,r = np.where(adj_mat)
+    return torch.tensor(np.array([s, r]), dtype=torch.int64)
+  elif len(adj_mat.shape) == 3:
+    s,r, p = np.where(adj_mat.astype(bool))
+    return torch.tensor([s, r, p], dtype=torch.int64)
+
+
+def adj_degree(g):
+  # For efficiency
+  g = scipy.sparse.coo_array(g)
+  g.setdiag(1)
+  # Compressed sparse row format
+  g = g.tocsr().astype(float)
+
+  # Dot product/matrix multiplication
+  g = g@g
+  g.setdiag(0)
+  return g.toarray()
+
+def unpool_edge(edge_index, edge_attr, e_idx):
+  g = to_dense_adj(edge_index).detach().numpy().squeeze()
+  # Matrix Magic
+  g = adj_degree(g)
+  # To Flat Edge
+  g = _adj_mat_to_flat_edge(g)
+  # Create empty array of all possible edges 
+  new_edge_attr = torch.zeros((g.shape[1], edge_attr.shape[-1]), dtype=torch.float32)
+  # Creates a 1d list of the 2d list
+  c = g.T[:,0]+g.T[:,1]*1j
+  # Creates a 1d list of the 2d list
+  d = edge_index.T[:,0]+edge_index.T[:,1]*1j
+  # Mask out actual edges
+  res = np.in1d(c,d)
+  mask = np.where(res)[0]
+  # Fill out edge attributes of prev resolution
+  new_edge_attr[e_idx,:] = edge_attr
+  # Mask edge_attributes
+  new_edge_attr = new_edge_attr[mask]
+  new_edge_index = g[:, mask]
+  return new_edge_index, new_edge_attr
 
 class MessagePassingEdgeConv(MessagePassing):
     def __init__(self, channel_in, channel_out, args):
@@ -132,33 +176,33 @@ class MessagePassingBlock(torch.nn.Module):
     Just combines n number of message passing layers
     """
 
-    def __init__(self, hidden_dim, latent_dim, args, num_blocks=None):
+    def __init__(self, channel_in, channel_out, args, num_blocks=None):
         super(MessagePassingBlock, self).__init__()
         if num_blocks is None:
             self.num_blocks = args.num_blocks
         else:
             self.num_blocks = num_blocks
-        self.hidden_dim = hidden_dim
-        self.latent_dim = latent_dim
+        self.channel_in = channel_in
+        self.channel_out = channel_out
         self.processor = nn.ModuleList()
         assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
         
         processor_layer = self.build_processor_model()
         for i in range(self.num_blocks):
             if i == 0:
-                self.processor.append(processor_layer(self.hidden_dim, self.latent_dim))
+                self.processor.append(processor_layer(self.channel_in, self.channel_out))
             else:
-                self.processor.append(processor_layer(self.latent_dim, self.latent_dim))
+                self.processor.append(processor_layer(self.channel_out, self.channel_out))
 
     def build_processor_model(self):
-        return GCNConv
+        return ProcessorLayer
 
-    def forward(self, x, edge_index):
+    def forward(self, b_data):
         # Step 1: encode node/edge features into latent node/edge embeddings
         # step 2: perform message passing with latent node/edge embeddings
         for i in range(self.num_blocks):
-            x = self.processor[i](x, edge_index)
-        return x
+            b_data = self.processor[i](b_data)
+        return b_data
 
 class MessagePassingLayer(torch.nn.Module):
     """
@@ -168,7 +212,6 @@ class MessagePassingLayer(torch.nn.Module):
 
     def __init__(self, hidden_dim, latent_dim, args, bottom = False, first_up = False):
         super(MessagePassingLayer, self).__init__()
-        self.hidden_dim = args.hidden_dim
         self.l_n = args.mpl_layers
         self.args = args
         self.bottom = bottom
@@ -187,7 +230,7 @@ class MessagePassingLayer(torch.nn.Module):
         self.down_gmps = nn.ModuleList()
         self.up_gmps = nn.ModuleList()
         self.unpools = nn.ModuleList()
-        self.bottom_gmp = MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim=self.latent_dim, args=args)
+        self.bottom_gmp = MessagePassingBlock(channel_in = self.latent_dim, channel_out = self.latent_dim, args=args)
         self.edge_conv = WeightedEdgeConv()
         self.pool = self._pooling_strategy()
         self.pools = nn.ModuleList()
@@ -199,14 +242,14 @@ class MessagePassingLayer(torch.nn.Module):
         for i in range(self.l_n):
             if i == 0:
                 self.down_gmps.append(
-                        MessagePassingBlock(hidden_dim=self.hidden_dim, latent_dim = self.latent_dim, args=args)
+                        MessagePassingBlock(channel_in=self.hidden_dim, channel_out = self.latent_dim, args=args)
                     )
             else:
                 self.down_gmps.append(
-                       MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim = self.latent_dim, args=args)
+                       MessagePassingBlock(channel_in=self.latent_dim, channel_out = self.latent_dim, args=args)
                     )
             self.up_gmps.append(
-                MessagePassingBlock(hidden_dim=self.latent_dim, latent_dim=self.latent_dim, args=args)
+                MessagePassingBlock(channel_in=self.latent_dim, channel_out=self.latent_dim, args=args)
             )
             self.unpools.append(Unpool())
             if self.args.pool_strat == "ASA":
@@ -222,72 +265,80 @@ class MessagePassingLayer(torch.nn.Module):
 
     def forward(self, b_data):
         """Forward pass through Message Passing Layer"""
+        # Maybe make into a dict for readability? 
         down_outs = []
         cts = []
         down_masks = []
         down_gs = []
         batches = []
         ws = []
-        b_data.edge_weight = None
-        edge_attr = b_data.edge_attr
+        attr = []
         b_data.weights = b_data.x.new_ones((b_data.x.shape[-2], 1)) if b_data.weights is None else b_data.weights
         for i in range(self.l_n):
-            h = b_data.x
-            g = b_data.edge_index
-            h = self.down_gmps[i](h, g)
+            """ h = b_data.x
+            g = b_data.edge_index """
+            # This should return x, edge_attr
+            b_data = self.down_gmps[i](b_data)
             # record the infor before aggregation
-            down_outs.append(h)
-            down_gs.append(g)
+            down_outs.append(b_data.x)
+            down_gs.append(b_data.edge_index)
             batches.append(b_data.batch)
             ws.append(b_data.weights)
-            
+            attr.append(b_data.edge_attr)
 
             # aggregate then pooling
             # Calculates edge and node weigths
             if self.args.edge_conv:
-                ew, w = self.edge_conv.cal_ew(b_data.weights, g)
+                ew, w = self.edge_conv.cal_ew(b_data.weights, b_data.edge_index)
                 b_data.weights = w
                 # Does edge convolution on nodes with edge weigths
-                h = self.edge_conv(h, g, ew)
+                b_data.x = self.edge_conv(b_data.x, b_data.edge_index, ew)
                 # Does edge convolution on position with edge weights
                 cts.append(ew)
-            b_data.x = h
+            #b_data.x = h
             if self.args.pool_strat == "ASA":
-                x, edge_index, edge_weight, batch, index = self.pools[i](
-                    b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch
+                x, edge_index, edge_attr, batch, index = self.pools[i](
+                    b_data.x, b_data.edge_index, b_data.edge_attr, b_data.batch
                 )
                 down_masks.append(index)
                 b_data.x = x
                 b_data.edge_index = edge_index
-                b_data.edge_weight = edge_weight
+                b_data.edge_attr = edge_attr
                 b_data.batch = batch
                 b_data.weights = b_data.weights[index]
             else:
-                x, edge_index, edge_weight, batch, index, _ = self.pools[i](
-                    b_data.x, b_data.edge_index, b_data.edge_weight, b_data.batch
+                x, edge_index, edge_attr, batch, index, _ = self.pools[i](
+                    b_data.x, b_data.edge_index, b_data.edge_attr, b_data.batch
                 )
                 down_masks.append(index)
                 b_data.x = x
                 b_data.edge_index = edge_index
-                b_data.edge_weight = edge_weight
+                b_data.edge_attr = edge_attr
                 b_data.batch = batch
                 b_data.weights = b_data.weights[index]
-        b_data.x = self.bottom_gmp(b_data.x, b_data.edge_index)
+        b_data = self.bottom_gmp(b_data)
         for i in range(self.l_n):
             up_idx = self.l_n - i - 1
-            h = self.unpools[i](
+            # Unpooling
+            b_data.x = self.unpools[i](
                 b_data.x, down_outs[up_idx].shape[0], down_masks[up_idx]
             )
-            tmp_g = down_gs[up_idx]
+            # Old Edge
+            b_data.edge_index = down_gs[up_idx]
+            #Edge Convolution
             if self.args.edge_conv:
-                h = self.edge_conv(h, tmp_g, cts[up_idx], aggragating=False)
-            h = self.up_gmps[i](h, g)
-            h = h.add(down_outs[up_idx])
-            b_data.x = h
-            b_data.edge_index = tmp_g
+                b_data.x = self.edge_conv(b_data.x, b_data.edge_index, cts[up_idx], aggragating=False)
+            # Message Passing
+            # Skip connection batch
             b_data.batch = batches[up_idx]
+            # Skip connection weights
             b_data.weights = ws[up_idx]
-        b_data.edge_attr = edge_attr
+            b_data.edge_attr = attr[up_idx]
+            b_data = self.up_gmps[i](b_data)
+            b_data.x = b_data.x.add(down_outs[up_idx])
+            #b_data.x = h
+            #b_data.edge_index = tmp_g
+        #b_data.edge_attr = edge_attr
         return b_data
     
     def _pooling_strategy(self):
@@ -306,7 +357,8 @@ class ProcessorLayer(MessagePassing):
         in_channels: dim of node embeddings [128], out_channels: dim of edge embeddings [128]
 
         """
-
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         # Note that the node and edge encoders both have the same hidden dimension
         # size. This means that the input of the edge processor will always be
         # three times the specified hidden dimension
@@ -342,7 +394,7 @@ class ProcessorLayer(MessagePassing):
         Note that message passing and aggregation are handled by the propagate
         function, and the update
 
-        x has shpae [node_num , in_channels] (node embeddings)
+        x has shape [node_num , in_channels] (node embeddings)
         edge_index: [2, edge_num]
         edge_attr: [edge_num, in_channels]
 
@@ -350,10 +402,19 @@ class ProcessorLayer(MessagePassing):
         x = b_data.x
         edge_index = b_data.edge_index
         edge_attr = b_data.edge_attr
+        arguments = {'dim_size' : (x.size(0), self.in_channels + self.out_channels)}
 
-        out, updated_edges = self.propagate(edge_index, x = x, edge_attr = edge_attr, size = size) # out has the shape of [E, out_channels]
+        out, updated_edges = self.propagate(edge_index = edge_index, 
+                                            x = x, 
+                                            edge_attr = edge_attr, 
+                                            size = (x.size(0), x.size(0)), 
+                                            **arguments) # out has the shape of [E, out_channels]
+
+
         updated_nodes = torch.cat([x,out],dim=1)        # Complete the aggregation through self-aggregation
-        updated_nodes = self.node_mlp(updated_nodes) # residual connection
+
+        updated_nodes = self.node_mlp(updated_nodes)    # residual connection
+
         b_data.x = updated_nodes
         b_data.edge_attr = updated_edges
         return b_data
@@ -378,12 +439,10 @@ class ProcessorLayer(MessagePassing):
         then we aggregate self message (from the edge itself). This is streamlined
         into one operation here.
         """
-
         # The axis along which to index number of nodes.
         node_dim = 0
 
-        out = scatter(updated_edges, edge_index[0, :], dim=node_dim, reduce = 'sum')
-
+        out = scatter(updated_edges, edge_index[0, :], dim=node_dim, reduce = 'sum', dim_size=dim_size)
         return out, updated_edges
 
 

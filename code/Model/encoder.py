@@ -2,13 +2,13 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
-from torch_geometric.data import Batch, Data
-from torch_geometric.nn.conv import GraphConv, MessagePassing
-from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree
-from torch_scatter import scatter
+from torch_geometric.data import Batch
 from loguru import logger
-from utility import MessagePassingLayer, GCNConv, WeightedEdgeConv, MessagePassingBlock
+try:
+    from utility import MessagePassingLayer, pool_edge
+except:
+    from .utility import MessagePassingLayer, pool_edge
+
 
 class Encoder(nn.Module):
     def __init__(self, args, m_ids, m_gs):
@@ -19,6 +19,7 @@ class Encoder(nn.Module):
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
         self.in_dim_node = args.in_dim_node
+        self.in_dim_edge = args.in_dim_edge
         self.latent_vec_dim = len(m_ids[-1])
         self.b = args.batch_size
         self.layers = nn.ModuleList()
@@ -29,6 +30,11 @@ class Encoder(nn.Module):
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
+        self.edge_encoder = Sequential(Linear(self.in_dim_edge , self.hidden_dim),
+                              ReLU(),
+                              Linear( self.hidden_dim, self.hidden_dim),
+                              LayerNorm(self.hidden_dim)
+                              )
         for i in range(self.ae_layers):
             
             self.layers.append(Res_down(
@@ -50,9 +56,8 @@ class Encoder(nn.Module):
                         Linear(64, 1))
 
     def forward(self, b_data, Train = True):
-        x = b_data.x
-        b_data.x = self.node_encoder(x)
-        self.b = len(torch.unique(b_data.batch))
+        b_data.x = self.node_encoder(b_data.x)
+        b_data.edge_attr = self.edge_encoder(b_data.edge_attr)
 
         for i in range(self.ae_layers): 
             b_data = self.layers[i](b_data)
@@ -95,7 +100,7 @@ class Res_down(nn.Module):
         self.m_id = m_id
         self.m_g = m_g
         self.args = args
-        self.mpl1 = MessagePassingLayer(channel_in, channel_out//2, args)
+        self.mpl1 = MessagePassingLayer(channel_in, channel_out // 2, args)
         self.mpl2 = MessagePassingLayer(channel_out // 2, channel_out, args)
         self.act1 = nn.ReLU()
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args) # skip
@@ -111,7 +116,7 @@ class Res_down(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = data.x[mask]
             data.weights = data.weights[mask]
-            data.edge_index = g
+            data.edge_index, data.edge_attr = pool_edge(mask, g, data.edge_attr)
             data_lst.append(data)
         return Batch.from_data_list(data_lst).to(self.args.device) 
     

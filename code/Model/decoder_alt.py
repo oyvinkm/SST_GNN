@@ -8,16 +8,17 @@ from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
 from torch_scatter import scatter
 from loguru import logger
-from .utility import MessagePassingEdgeConv, ProcessorLayer, pool_edge
+from .utility import MessagePassingEdgeConv, ProcessorLayer, pool_edge, unpool_edge
 
 class Decoder(nn.Module):
-    def __init__(self, args, m_ids, m_gs):
+    def __init__(self, args, m_ids, m_gs, e_s):
         super(Decoder, self).__init__()
         self.args = args
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
         self.max_hidden_dim = args.hidden_dim * 2 ** args.ae_layers
-        self.m_ids, self.m_gs = m_ids, m_gs
+        # Pre computed node mask and edge_mask from bi-stride pooling
+        self.m_ids, self.m_gs, self.e_x = m_ids, m_gs, e_s
         self.ae_layers = args.ae_layers
         self.n = args.n_nodes
         self.layers = nn.ModuleList()
@@ -40,6 +41,7 @@ class Decoder(nn.Module):
                                       args = args,
                                       m_id = m_ids[args.ae_layers - i - 1],
                                       m_g = m_gs[args.ae_layers - i - 1],
+                                      e_idx = e_s[args.ae_layers -i - 1],
                                       up_nodes = up_nodes)
                                       )
 
@@ -85,10 +87,11 @@ class Unpool(nn.Module):
         return new_h
     
 class Res_up(nn.Module):
-    def __init__(self, channel_in, channel_out, args, m_id, m_g, up_nodes):
+    def __init__(self, channel_in, channel_out, args, m_id, m_g, e_idx, up_nodes):
         super(Res_up, self).__init__()
         self.m_id = m_id
         self.m_g = m_g
+        self.e_idx = e_idx
         self.args = args
         self.up_nodes = up_nodes
         self.mpl1 = ProcessorLayer(in_channels=channel_in, out_channels=channel_out//2)
@@ -106,6 +109,8 @@ class Res_up(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = self.unpool(data.x, self.up_nodes, mask)
             data.weights = self.unpool(data.weights, self.up_nodes, mask)
+            # This should not work
+            data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx)
             data.edge_index, data.edge_attr = pool_edge(np.arange(self.up_nodes), g, data.edge_attr)
             #data.edge_index = g
             batch_lst.append(data)

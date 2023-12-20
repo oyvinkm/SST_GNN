@@ -125,6 +125,7 @@ class Res_down(nn.Module):
     def forward(self, b_data):
         b_skip = self._bi_pool_batch(b_data.clone())
         b_skip = self.mpl_skip(b_skip) # out = channel_out
+        
         b_data = self.mpl1(b_data)
         b_data = self._bi_pool_batch(b_data)
         b_data = self.mpl2(b_data)

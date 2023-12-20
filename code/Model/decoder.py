@@ -2,22 +2,23 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
-from torch_geometric.data import Batch, Data
-from torch_geometric.nn.conv import GraphConv, MessagePassing
-from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree
-from torch_scatter import scatter
+from torch_geometric.data import Batch
 from loguru import logger
-from utility import MessagePassingLayer, GCNConv, WeightedEdgeConv, MessagePassingBlock
+
+try:
+    from utility import MessagePassingLayer, unpool_edge
+except:
+    from .utility import MessagePassingLayer, unpool_edge
 
 class Decoder(nn.Module):
-    def __init__(self, args, m_ids, m_gs):
+    def __init__(self, args, m_ids, m_gs, e_s):
         super(Decoder, self).__init__()
         self.args = args
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
         self.max_hidden_dim = args.hidden_dim * 2 ** args.ae_layers
-        self.m_ids, self.m_gs = m_ids, m_gs
+        # Pre computed node mask and edge_mask from bi-stride pooling
+        self.m_ids, self.m_gs, self.e_x = m_ids, m_gs, e_s
         self.ae_layers = args.ae_layers
         self.n = args.n_nodes
         self.layers = nn.ModuleList()
@@ -40,6 +41,7 @@ class Decoder(nn.Module):
                                       args = args,
                                       m_id = m_ids[args.ae_layers - i - 1],
                                       m_g = m_gs[args.ae_layers - i - 1],
+                                      e_idx = e_s[args.ae_layers -i - 1],
                                       up_nodes = up_nodes)
                                       )
 
@@ -49,6 +51,12 @@ class Decoder(nn.Module):
             LeakyReLU(),
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
+        )
+        self.out_edge_encoder = Sequential(
+            Linear(self.hidden_dim, self.hidden_dim // 2),
+            LeakyReLU(),
+            Linear(self.hidden_dim // 2, 3),
+            LayerNorm(3),
         )
 
     def from_latent_vec(self, z_x):
@@ -70,6 +78,7 @@ class Decoder(nn.Module):
            b_data = self.layers[i](b_data)
         b_data = self.final_layer(b_data) #
         b_data.x = self.out_node_decoder(b_data.x) #
+        b_data.edge_attr = self.out_edge_encoder(b_data.edge_attr)
         return b_data
     
 class Unpool(nn.Module):
@@ -86,10 +95,11 @@ class Unpool(nn.Module):
         return new_h
     
 class Res_up(nn.Module):
-    def __init__(self, channel_in, channel_out, args, m_id, m_g, up_nodes):
+    def __init__(self, channel_in, channel_out, args, m_id, m_g, e_idx, up_nodes):
         super(Res_up, self).__init__()
         self.m_id = m_id
         self.m_g = m_g
+        self.e_idx = e_idx
         self.args = args
         self.up_nodes = up_nodes
         self.mpl1 = MessagePassingLayer(channel_in, channel_out//2, args)
@@ -107,7 +117,7 @@ class Res_up(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = self.unpool(data.x, self.up_nodes, mask)
             data.weights = self.unpool(data.weights, self.up_nodes, mask)
-            data.edge_index = g
+            data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx)
             batch_lst.append(data)
         b_data = Batch.from_data_list(batch_lst).to(self.args.device)
         return b_data

@@ -11,15 +11,11 @@ from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
 from torch_scatter import scatter
 from loguru import logger
-try:
-    from encoder import Encoder
-    from decoder import Decoder
-except:
-    from .encoder import Encoder
-    from .decoder import Decoder
+from .encoder_alt import Encoder
+from .decoder_alt import Decoder
 
 
-class MultiScaleAutoEncoder(nn.Module):
+class MultiScaleAutoEncoder_Alt(nn.Module):
     """
     Multiscale Auto Encoder consist of n_layer of Message Passing Layers (MPL) with
     pooling and unpooling operations in between in order to obtain a coarse latent

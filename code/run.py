@@ -143,7 +143,7 @@ def main():
     # Initialize Model
     if not args.latent_space:
         logger.warning("Model is not going into latent_space")
-    model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs)
+    model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs, dataset.e_s)
     model = model.to(args.device)
     if args.load_model:
         model_path = os.path.join(args.save_model_dir , args.model_file)
