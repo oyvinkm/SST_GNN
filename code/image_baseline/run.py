@@ -70,20 +70,21 @@ def main():
     os.mkdir(I_FOLDER)
   test_ratio = .2
   val_ratio = .2
+  batch_size = 8
 
   transform = T.Compose([T.Resize((128, 512)),
                         #T.Grayscale(),
                         T.ToTensor()])
   dataset = torchvision.datasets.ImageFolder(root, transform = transform)
-  train_data, test_data = train_test_split(dataset, test_size=test_ratio)
-  train_data, val_data = train_test_split(train_data, test_size=val_ratio / (1 - test_ratio))
-  train_loader = DataLoader(train_data, batch_size=4, num_workers=4, shuffle=True)
-  test_loader = DataLoader(test_data, batch_size=1, shuffle = False)
+  train_data, test_data = train_test_split(dataset, test_size=test_ratio, shuffle=True)
+  train_data, val_data = train_test_split(train_data, test_size=val_ratio / (1 - test_ratio), shuffle=True)
+  train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=4, shuffle=True)
+  test_loader = DataLoader(test_data, batch_size=1, shuffle = True)
   val_loader = DataLoader(val_data, batch_size=1, shuffle=True)
 
-  logger.debug(f'Train : {len(train_loader) * 16}')
-  logger.debug(f'Test : {len(test_loader)}')
-  logger.debug(f'Val : {len(val_loader)}')
+  logger.info(f'Train : {len(train_loader) * batch_size}')
+  logger.info(f'Test : {len(test_loader)}')
+  logger.info(f'Val : {len(val_loader)}')
 
   # Pre Train
   augmentation = T.Compose([AddGaussianNoise(device = device), 
@@ -93,16 +94,17 @@ def main():
                             interpolation=T.InterpolationMode.BILINEAR),
                             RandomElastic(p=.3, alpha=5., sigma=2.),
                             T.RandomVerticalFlip(p = .2),
-                            T.RandomHorizontalFlip(p = .2)
+                            #T.RandomHorizontalFlip(p = .2)
                           ])
   net = VAE(channel_in = 3, z = 32, device = device).to(device)
  # model_path = 'model_chkpoints/model_VAE_2023_11_26-14.51.pt'
-  model_path = None
+  model_path = 'model_chkpoints/model_VAE_2024_01_15-14.39.pt'
 
-  no_epochs = 100
-  lr = 1e-5
+  start_epoch = 49
+  no_epochs = 200
+  lr = 1e-4
   eps = 1e-5
-  beta = 0.0001
+  beta = 1e-4
 
   optimizer = torch.optim.Adam(net.parameters(), lr=lr, eps=eps)
   if model_path is not None:
@@ -111,14 +113,15 @@ def main():
      optimizer.load_state_dict(state_dict['optimizer_state_dict'])
      logger.success(f'Optimizer and Model loaded')
 
-  trainer = Trainer(beta = beta, device = device)
+  trainer = Trainer(beta = beta, device = device, criterion='MSE')
   best_model, loss = trainer.train(no_epochs = no_epochs,
                 net = net, 
                 augmentation = augmentation, 
                 train_loader = train_loader, 
                 val_loader = val_loader, 
                 optimizer = optimizer,
-                device = device)
+                device = device,
+                start_epoch = start_epoch)
   test_loss = trainer.test(net = best_model, test_loader=test_loader)
   logger.success(f'Test Loss: {test_loss}')
 

@@ -87,7 +87,7 @@ class Encoder(nn.Module):
         x = self.conv4(x)
         x = self.conv5(x)
         x = self.mlp(x)
-        logger.debug(f'Latent dim encoder: {x.shape}')
+        
         if Train:
             mu = self.conv_mu(x)
             log_var = self.conv_logvar(x)
@@ -98,6 +98,7 @@ class Encoder(nn.Module):
         else:
             z = self.conv_mu(x)
             kl = None
+        logger.debug(f'Latent dim encoder: {z.shape}')
         return kl, z
     
 #Decoder block
@@ -119,8 +120,8 @@ class Decoder(nn.Module):
         self.act = nn.Sigmoid()
 
     def forward(self, x):
-        x = self.mlp(x)
         logger.debug(f'Latent dim decoder: {x.shape}')
+        x = self.mlp(x)
         x = self.conv1(x)
         x = self.conv12(x)
         x = self.conv2(x)
