@@ -15,6 +15,7 @@ from loguru import logger
 import numpy as np
 import copy
 import numpy as np
+from datetime import datetime
 import random
 from VAE import VAE
 from train import Trainer
@@ -59,29 +60,41 @@ def main():
     device = 'cpu'
   logger.success(f'Device : {device}')
 
-  # Data Loading
+  # ----- SETUP ------
   data_path = 'data/cylinder_flow/'
   id = 1
-  #file_path = lambda id : os.path.join(data_path, f'trajectories/trajectory_{id}.pt')
   root = os.path.join(os.path.join(data_path, f'image_traj/root/'))
   image_folder = lambda id : os.path.join(os.path.join(root, f'traj_{id}'))
   I_FOLDER = image_folder(id)
   if not os.path.isdir(I_FOLDER):
     os.mkdir(I_FOLDER)
+
+  # ----- SETUP ------
   test_ratio = .2
   val_ratio = .2
-  batch_size = 8
+  batch_size = 16
 
   transform = T.Compose([T.Resize((128, 512)),
                         #T.Grayscale(),
                         T.ToTensor()])
   dataset = torchvision.datasets.ImageFolder(root, transform = transform)
   train_data, test_data = train_test_split(dataset, test_size=test_ratio, shuffle=True)
-  train_data, val_data = train_test_split(train_data, test_size=val_ratio / (1 - test_ratio), shuffle=True)
-  train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=4, shuffle=True)
-  test_loader = DataLoader(test_data, batch_size=1, shuffle = True)
-  val_loader = DataLoader(val_data, batch_size=1, shuffle=True)
-
+  train_data, val_data = train_test_split(train_data,
+                                          test_size=val_ratio / (1 - test_ratio), 
+                                          shuffle=True)
+  train_loader = DataLoader(train_data, 
+                            batch_size=batch_size, 
+                            num_workers=4, 
+                            shuffle=True)
+  test_loader = DataLoader(test_data, 
+                          batch_size=1, 
+                          shuffle = True)
+  val_loader = DataLoader(val_data, 
+                          batch_size=1, 
+                          shuffle=True)
+  logger.success(f'Data Loaded\nTrain : \
+                  {len(train_loader) * batch_size}\n \
+                  Test : {len(test_loader)}\nVal : {len(val_loader)}')
   logger.info(f'Train : {len(train_loader) * batch_size}')
   logger.info(f'Test : {len(test_loader)}')
   logger.info(f'Val : {len(val_loader)}')
@@ -96,16 +109,27 @@ def main():
                             T.RandomVerticalFlip(p = .2),
                             #T.RandomHorizontalFlip(p = .2)
                           ])
-  net = VAE(channel_in = 3, z = 32, device = device).to(device)
+  net = VAE(channel_in = 3, z = 10, device = device).to(device)
  # model_path = 'model_chkpoints/model_VAE_2023_11_26-14.51.pt'
-  model_path = 'model_chkpoints/model_VAE_2024_01_15-14.39.pt'
+  model_path = None
 
-  start_epoch = 49
+  timestamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
+
+  start_epoch = 0
   no_epochs = 200
-  lr = 1e-4
+  lr = 1e-2
   eps = 1e-5
-  beta = 1e-4
-
+  beta = 1e-3
+  criterion = 'MSE'
+  args = {'epochs' : (no_epochs - start_epoch), 
+          'lr' : {lr},
+          'eps' : {eps},
+          'beta' : {beta},
+          'criterion' : {criterion},
+          'batch_size' : {batch_size}}
+  with open(f"args_{timestamp}.txt", 'w') as f:  
+    for key, value in args.items():  
+        f.write('%s:%s\n' % (key, value))
   optimizer = torch.optim.Adam(net.parameters(), lr=lr, eps=eps)
   if model_path is not None:
      state_dict = torch.load(model_path)
@@ -113,7 +137,7 @@ def main():
      optimizer.load_state_dict(state_dict['optimizer_state_dict'])
      logger.success(f'Optimizer and Model loaded')
 
-  trainer = Trainer(beta = beta, device = device, criterion='MSE')
+  trainer = Trainer(beta = beta, device = device, criterion=criterion, time = timestamp)
   best_model, loss = trainer.train(no_epochs = no_epochs,
                 net = net, 
                 augmentation = augmentation, 
@@ -121,7 +145,8 @@ def main():
                 val_loader = val_loader, 
                 optimizer = optimizer,
                 device = device,
-                start_epoch = start_epoch)
+                start_epoch = start_epoch,
+                progress_bar = False)
   test_loss = trainer.test(net = best_model, test_loader=test_loader)
   logger.success(f'Test Loss: {test_loss}')
 
@@ -140,5 +165,5 @@ if __name__ == "__main__":
     # ERROR (40): used to record error conditions that affected a specific operation.
     # CRITICAL (50): used to used to record error conditions that prevent a core
     # function from working.
-    logger.add(sys.stderr, level='INFO')
+    logger.add(sys.stderr, level='SUCCESS')
     main()

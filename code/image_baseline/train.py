@@ -1,4 +1,3 @@
-
 import os
 import enlighten
 import torch
@@ -22,8 +21,8 @@ class LOGMSELoss(nn.Module):
         return torch.log(self.mse(input, target))
 
 class Trainer(object):
-  def __init__(self, beta = 0.001, criterion = None, device = 'cpu'):
-      self.time = datetime.now().strftime("%Y_%m_%d-%H.%M")
+  def __init__(self, beta = 0.001, criterion = None, device = 'cpu', time = 0):
+      self.time = time
       self.beta = beta
       self.device = device
       self.model_path = self.log_model_path()
@@ -123,7 +122,9 @@ class Trainer(object):
             device = 'cpu',
             start_epoch = 0,
             progress_bar = True):
-    no_epochs = no_epochs - start_epoch
+    start_epoch = start_epoch if no_epochs > start_epoch else 0
+    no_epochs = max(0, no_epochs - start_epoch)
+    logger.success(f'Training started for {no_epochs} epoch(s)....')
     epoch_losses = []
     val_loss = []
     if progress_bar:
@@ -131,15 +132,18 @@ class Trainer(object):
       epochs = manager.counter(total=no_epochs, desc="Epochs", unit="Epochs", color="red")
     best_val_loss = np.inf
     tot_val_loss = np.inf
+    best_model = net
     for epoch in range(start_epoch, no_epochs):  # Loop over the dataset multiple times
         net.train()
-        epochs.update()
-        batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
+        if progress_bar:
+          epochs.update()
+          batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         best_model = None
         losses = []
         kls = []
         for i, (data, _) in enumerate(train_loader):
-            batch_counter.update()
+            if progress_bar:
+              batch_counter.update()
             # Get the inputs; data is a list of [inputs, labels]
             inputs = augmentation(data.to(self.device))
             # Zero the parameter gradients
@@ -157,28 +161,37 @@ class Trainer(object):
         tot_val_loss = self.validate(net, val_loader, epoch)
         val_loss.append(tot_val_loss)
         if tot_val_loss < best_val_loss:
-            logger.info(f'Val loss : {tot_val_loss}\tBest loss : {best_val_loss}')
-            logger.info('Saving model')
+            logger.success(f'Val loss : {tot_val_loss}\tBest loss : {best_val_loss}')
+            logger.success(f'Saving model from epoch {epoch}')
             best_model = copy.deepcopy(net)
             self.save_model(epoch, net.state_dict(), optimizer.state_dict())
             best_val_loss = tot_val_loss
-        batch_counter.close()
+        if progress_bar:
+          batch_counter.close()
         epoch_losses.append(sum(losses)/len(losses))
         #kulback = np.mean(kls)
-        logger.info('[%d, %5d] train loss: %.3f\tKL Divergence: %.3f\tKL: %.3f\tval loss: %.3f' %
-              (epoch + 1, i + 1, epoch_losses[-1], self.beta*np.mean(kls), np.mean(kls), tot_val_loss))
-    epochs.close()
-    manager.stop() 
+        if epoch % 10 == 0:
+          logger.success('[%d, %5d] train loss: %.3f\tKL Divergence: %.3f\tKL: %.3f\tval loss: %.3f' %
+                (epoch + 1, i + 1, epoch_losses[-1], self.beta*np.mean(kls), np.mean(kls), tot_val_loss))
+    if progress_bar:
+      epochs.close()
+      manager.stop() 
     self.save_plot(epoch_losses, val_loss)   
     return best_model, epoch_losses
   
   def test(self, net, test_loader):
+    logger.success(f'Testing.. ')
     test_loss = []
+    os.mkdir(os.path.join(self.image_folder, 'test'))
     with torch.no_grad():
       for i, (data, _) in enumerate(test_loader):
         inputs = data.to(self.device)
-        _, recon = net(inputs, Train = False)
-        rec_loss = self.criterion(recon, inputs)
-        test_loss.append(rec_loss.item())
-        self.save_image(recon[0], inputs[0], f'test_{i}')
+        logger.info(f'size input : {inputs.shape}')
+        try:
+          _, recon = net(inputs, Train = False)
+          rec_loss = self.criterion(recon, inputs)
+          test_loss.append(rec_loss.item())
+          self.save_image(recon[0], inputs[0], f'test/test_{i}')
+        except:
+          logger.error(f'Something is None\nnet : {type(net)}\n{type(inputs)}')
     return sum(test_loss)/len(test_loss)
