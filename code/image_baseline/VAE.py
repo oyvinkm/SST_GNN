@@ -81,6 +81,7 @@ class Encoder(nn.Module):
         return mu + eps*std
         
     def forward(self, x, Train = True):
+        logger.debug(f'{Train=}')
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
@@ -89,16 +90,18 @@ class Encoder(nn.Module):
         x = self.mlp(x)
         
         if Train:
+            logger.debug(f'If Train: {x.shape=}')
             mu = self.conv_mu(x)
             log_var = self.conv_logvar(x)
             z = self.sample(mu, log_var)
             # z shape:
             ## torch.Size([128, 100, 1, 1])
+            logger.debug(f'{z.shape=}')
             kl = torch.mean(-0.5*torch.sum(1+log_var-mu**2-log_var.exp()))
+            logger.debug(f'{kl=}')
         else:
             z = self.conv_mu(x)
             kl = None
-        logger.debug(f'Latent dim encoder: {z.shape}')
         return kl, z
     
 #Decoder block
@@ -120,7 +123,6 @@ class Decoder(nn.Module):
         self.act = nn.Sigmoid()
 
     def forward(self, x):
-        logger.debug(f'Latent dim decoder: {x.shape}')
         x = self.mlp(x)
         x = self.conv1(x)
         x = self.conv12(x)

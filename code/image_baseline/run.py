@@ -72,7 +72,7 @@ def main():
   # ----- SETUP ------
   test_ratio = .2
   val_ratio = .2
-  batch_size = 16
+  batch_size = 8
 
   transform = T.Compose([T.Resize((128, 512)),
                         #T.Grayscale(),
@@ -95,9 +95,6 @@ def main():
   logger.success(f'Data Loaded\nTrain : \
                   {len(train_loader) * batch_size}\n \
                   Test : {len(test_loader)}\nVal : {len(val_loader)}')
-  logger.info(f'Train : {len(train_loader) * batch_size}')
-  logger.info(f'Test : {len(test_loader)}')
-  logger.info(f'Val : {len(val_loader)}')
 
   # Pre Train
   augmentation = T.Compose([AddGaussianNoise(device = device), 
@@ -146,7 +143,7 @@ def main():
                 optimizer = optimizer,
                 device = device,
                 start_epoch = start_epoch,
-                progress_bar = False)
+                progress_bar = True)
   test_loss = trainer.test(net = best_model, test_loader=test_loader)
   logger.success(f'Test Loss: {test_loss}')
 

@@ -149,7 +149,8 @@ class Trainer(object):
             # Zero the parameter gradients
 
             # Forward + backward + optimize
-            kl, recon = net(inputs)
+            kl, recon = net(inputs, Train = True)
+            logger.debug(f'{kl=}')
             kls.append(kl.cpu().detach().numpy())
             rec_loss = self.criterion(recon, inputs)
             loss = self.beta*kl + rec_loss
