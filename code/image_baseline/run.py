@@ -72,7 +72,7 @@ def main():
   # ----- SETUP ------
   test_ratio = .2
   val_ratio = .2
-  batch_size = 8
+  batch_size = 16
 
   transform = T.Compose([T.Resize((128, 512)),
                         #T.Grayscale(),
@@ -92,9 +92,10 @@ def main():
   val_loader = DataLoader(val_data, 
                           batch_size=1, 
                           shuffle=True)
-  logger.success(f'Data Loaded\nTrain : \
-                  {len(train_loader) * batch_size}\n \
-                  Test : {len(test_loader)}\nVal : {len(val_loader)}')
+  logger.success(f'Data Loaded\n \
+                  Train : {len(train_loader) * batch_size}\n \
+                  Test : {len(test_loader)}\n \
+                  Val : {len(val_loader)}')
 
   # Pre Train
   augmentation = T.Compose([AddGaussianNoise(device = device), 
@@ -113,8 +114,8 @@ def main():
   timestamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
 
   start_epoch = 0
-  no_epochs = 200
-  lr = 1e-2
+  no_epochs = 100
+  lr = 1e-3
   eps = 1e-5
   beta = 1e-3
   criterion = 'MSE'
