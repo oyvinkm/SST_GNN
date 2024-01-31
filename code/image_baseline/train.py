@@ -171,11 +171,7 @@ class Trainer(object):
           batch_counter.close()
         #kulback = np.mean(kls)
         if epoch % 10 == 0:
-          logger.success(f'[{epoch + 1, i + 1}] \
-                         epoch loss : {epoch_losses[-1]:.4f}\
-                         KL Divergence:{self.beta*np.mean(kls):.5f}\
-                         KL: {kls:.3f}\
-                         val loss: {tot_val_loss:.3f}')
+          logger.success(f'[{epoch + 1, i + 1}] | epoch loss : {epoch_losses[-1]:.4f} | KL Divergence:{self.beta*np.mean(kls):.5f} | KL: {kls:.3f} | val loss: {tot_val_loss:.3f}')
     if progress_bar:
       epochs.close()
       manager.stop() 
@@ -191,10 +187,7 @@ class Trainer(object):
         inputs = data.to(self.device)
         logger.info(f'{i} {inputs.shape=}')
         _, recon = net(inputs, Train = False)
-        logger.success(f'{recon.shape=}')
         rec_loss = self.criterion(recon, inputs)
-        logger.success(f'{rec_loss=}')
         test_loss.append(rec_loss.item())
         self.save_image(recon[0], inputs[0], f'test/test_{i}')
-        logger.success(f'Test image saved')
     return sum(test_loss)/len(test_loss)
