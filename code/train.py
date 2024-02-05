@@ -58,6 +58,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
             optimizer.zero_grad()  # zero gradients each time
+            logger.debug(f'{b_data=}')
             pred, kl = model(b_data)
             rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
             loss = beta*kl + rec_loss
@@ -109,7 +110,7 @@ def validate(model, val_loader, criterion, epoch, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
-        pred, _ = model(b_data, Train=False)
+        pred, _ = model(batch, Train=False)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
