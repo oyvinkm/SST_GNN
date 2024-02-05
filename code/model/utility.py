@@ -1,7 +1,10 @@
 import numpy as np
 import scipy
+import types
 import torch
 from torch import nn
+from functools import wraps
+from loguru import logger
 from torch.nn import LayerNorm, Linear, ReLU, Sequential
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
@@ -50,14 +53,14 @@ def adj_degree(g):
   g.setdiag(0)
   return g.toarray()
 
-def unpool_edge(edge_index, edge_attr, e_idx):
+def unpool_edge(edge_index, edge_attr, e_idx, args):
   g = to_dense_adj(edge_index).detach().numpy().squeeze()
   # Matrix Magic
   g = adj_degree(g)
   # To Flat Edge
   g = _adj_mat_to_flat_edge(g)
   # Create empty array of all possible edges 
-  new_edge_attr = torch.zeros((g.shape[1], edge_attr.shape[-1]), dtype=torch.float32)
+  new_edge_attr = torch.zeros((g.shape[1], edge_attr.shape[-1]), dtype=torch.float32).to(args.device)
   # Creates a 1d list of the 2d list
   c = g.T[:,0]+g.T[:,1]*1j
   # Creates a 1d list of the 2d list
@@ -458,3 +461,178 @@ class Unpool(nn.Module):
         new_h = h.new_zeros([pre_node_num, h.shape[-1]])
         new_h[idx] = h
         return new_h
+
+
+#################### Direction training ##########################
+from enum import Enum
+import os
+import json
+
+
+def vgae_with_shift(vgae_factory):
+    """ 
+    Wraps the vgae with the add_forward_with_shift
+    It's also called a decorator function
+    """
+    @wraps(vgae_factory)
+    def wrapper(*args, **kwargs):
+        vgae = vgae_factory(*args, **kwargs)
+        add_forward_with_shift(vgae)
+        return vgae
+
+    return wrapper
+
+def add_forward_with_shift(generator):
+    """
+    Used in vgae_with_shift.
+    Shifts a vector in the latent space.
+    """
+    def gen_shifted(self, b_data, z, shift, *args, **kwargs):
+        return self.forward(b_data, z + shift, *args, **kwargs)
+
+    # Creates these attributes for our generetor
+    # the gen_shifted function is bound to the generator
+    # It can be reread here: https://stackoverflow.com/questions/46525069/how-is-types-methodtype-used
+    # Doesn't seem to important
+    generator.dim_z = generator.latent_dim
+    generator.gen_shifted = types.MethodType(gen_shifted, generator)
+    generator.dim_shift = generator.latent_dim
+
+def save_run_params(args):
+    os.makedirs(args['out'], exist_ok=True)
+    with open(os.path.join(args['out'], 'args.json'), 'w') as args_file:
+        json.dump(args, args_file)
+
+class DeformatorType(Enum):
+    FC = 1
+    LINEAR = 2
+    ID = 3
+    ORTHO = 4
+    PROJECTIVE = 5
+    RANDOM = 6
+
+DEFORMATOR_TYPE_DICT = {
+    'fc': DeformatorType.FC,
+    'linear': DeformatorType.LINEAR,
+    'id': DeformatorType.ID,
+    'ortho': DeformatorType.ORTHO,
+    'proj': DeformatorType.PROJECTIVE,
+    'random': DeformatorType.RANDOM,
+}
+
+def torch_expm(A):
+    """Only used in the deformator in case the Deformator is of type ORTHO"""
+    n_A = A.shape[0]
+    A_fro = torch.sqrt(A.abs().pow(2).sum(dim=(1, 2), keepdim=True))
+
+    # Scaling step
+    maxnorm = torch.tensor([5.371920351148152], dtype=A.dtype, device=A.device)
+    zero = torch.tensor([0.0], dtype=A.dtype, device=A.device)
+    n_squarings = torch.max(zero, torch.ceil(torch_log2(A_fro / maxnorm)))
+    A_scaled = A / 2.0 ** n_squarings
+    n_squarings = n_squarings.flatten().type(torch.int64)
+
+    # Pade 13 approximation
+    U, V = torch_pade13(A_scaled)
+    P = U + V
+    Q = -U + V
+    R, _ = torch.solve(P, Q)
+
+    # Unsquaring step
+    res = [R]
+    for i in range(int(n_squarings.max())):
+        res.append(res[-1].matmul(res[-1]))
+    R = torch.stack(res)
+    expmA = R[n_squarings, torch.arange(n_A)]
+    return expmA[0]
+
+def make_noise(batch, dim, truncation = None):
+    """Creates a random latent_vector of size equal to batch X dim"""
+    if isinstance(dim, int):
+        dim = [dim]
+    if truncation is None or truncation == 1.0:
+        return torch.randn([batch] + dim+[1,1])
+
+class MeanTracker(object):
+    """Tracks the mean of the value in the list : values."""
+    def __init__(self, name):
+        self.values = []
+        self.name = name
+
+    def add(self, val):
+        self.values.append(float(val))
+
+    def mean(self):
+        return np.mean(self.values)
+
+    def flush(self):
+        mean = self.mean()
+        self.values = []
+        return self.name, mean
+
+@torch.no_grad()
+def interpolate(G, z, shifts_r, shifts_count, dim, deformator=None, with_central_border=False, device='cpu'):
+    """Used by make_interpolation_chart"""
+    shifted_images = []
+    for shift in np.arange(-shifts_r, shifts_r + 1e-9, shifts_r / shifts_count):
+        if deformator is not None:
+            latent_shift = deformator(one_hot(deformator.input_dim, shift, dim).to(device))
+        else:
+            latent_shift = one_hot(G.dim_shift, shift, dim).to(device)
+        shifted_image = G.gen_shifted(z, latent_shift).cpu()[0]
+        if shift == 0.0 and with_central_border:
+            shifted_image = add_border(shifted_image)
+
+        shifted_images.append(shifted_image)
+    return shifted_images
+
+@torch.no_grad()
+def make_interpolation_chart(G, deformator=None, z=None,
+                             shifts_r=10.0, shifts_count=5,
+                             dims=None, dims_count=10, texts=None, device='cpu', **kwargs):
+    """Creates a figure that includes some interpolation"""
+    with_deformation = deformator is not None
+    if with_deformation:
+        deformator_is_training = deformator.training
+        deformator.eval()
+    z = z if z is not None else make_noise(1, G.dim_z).to(device)
+
+    if with_deformation:
+        original_img = G(z).cpu()
+    else:
+        original_img = G(z).cpu()
+    imgs = []
+    if dims is None:
+        dims = range(dims_count)
+    for i in dims:
+        imgs.append(interpolate(G, z, shifts_r, shifts_count, i, deformator, device=device))
+
+    rows_count = len(imgs) + 1
+    fig, axs = plt.subplots(rows_count, **kwargs)
+
+    axs[0].axis('off')
+    axs[0].imshow(to_image(original_img, True))
+
+    if texts is None:
+        texts = dims
+    for ax, shifts_imgs, text in zip(axs[1:], imgs, texts):
+        ax.axis('off')
+        plt.subplots_adjust(left=0.5)
+        ax.imshow(to_image(make_grid(shifts_imgs, nrow=(2 * shifts_count + 1), padding=1), True))
+        ax.text(-20, 21, str(text), fontsize=10)
+
+    if deformator is not None and deformator_is_training:
+        deformator.train()
+
+    return fig
+
+def fig_to_image(fig):
+    """creates an image from a figure"""
+    buf = io.BytesIO()
+    fig.savefig(buf)
+    buf.seek(0)
+    return Image.open(buf)
+
+class ShiftDistribution(Enum):
+    NORMAL = 0,
+    UNIFORM = 1,

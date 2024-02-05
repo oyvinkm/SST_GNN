@@ -2,13 +2,13 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
-from torch_geometric.data import Batch, Data
-from torch_geometric.nn.conv import GraphConv, MessagePassing
-from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree
-from torch_scatter import scatter
+from torch_geometric.data import Batch
 from loguru import logger
-from .utility import MessagePassingEdgeConv, ProcessorLayer, pool_edge, unpool_edge
+
+try:
+    from utility import MessagePassingLayer, unpool_edge
+except:
+    from .utility import MessagePassingLayer, unpool_edge
 
 class Decoder(nn.Module):
     def __init__(self, args, m_ids, m_gs, e_s):
@@ -24,8 +24,8 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList()
         self.out_feature_dim = args.out_feature_dim
         self.latent_vec_dim = self.latent_vec_dim = len(m_ids[-1])
-        self.mpl_bottom = MessagePassingEdgeConv(channel_in = args.latent_dim, 
-                                              channel_out=self.max_hidden_dim, 
+        self.mpl_bottom = MessagePassingLayer(hidden_dim = args.latent_dim, 
+                                              latent_dim=self.max_hidden_dim, 
                                               args=args)
         self.linear_up_mlp = Sequential(Linear(1, 64),
                                     LeakyReLU(),
@@ -45,12 +45,18 @@ class Decoder(nn.Module):
                                       up_nodes = up_nodes)
                                       )
 
-        self.final_layer = MessagePassingEdgeConv(channel_in = self.hidden_dim, channel_out = self.hidden_dim, args=self.args)
+        self.final_layer = MessagePassingLayer(hidden_dim = self.hidden_dim, latent_dim = self.hidden_dim, args=self.args)
         self.out_node_decoder = Sequential(
             Linear(self.hidden_dim, self.hidden_dim // 2),
             LeakyReLU(),
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
+        )
+        self.out_edge_encoder = Sequential(
+            Linear(self.hidden_dim, self.hidden_dim // 2),
+            LeakyReLU(),
+            Linear(self.hidden_dim // 2, 3),
+            LayerNorm(3),
         )
 
     def from_latent_vec(self, z_x):
@@ -64,13 +70,15 @@ class Decoder(nn.Module):
         return z
 
     def forward(self, b_data, z):
-        z_x = self.from_latent_vec(z)
-        b_data.x = z_x
+        if self.args.latent_space:
+            z_x = self.from_latent_vec(z)
+            b_data.x = z_x
         b_data = self.mpl_bottom(b_data)
         for i in range(self.ae_layers):
            b_data = self.layers[i](b_data)
         b_data = self.final_layer(b_data) #
         b_data.x = self.out_node_decoder(b_data.x) #
+        b_data.edge_attr = self.out_edge_encoder(b_data.edge_attr)
         return b_data
     
 class Unpool(nn.Module):
@@ -94,9 +102,9 @@ class Res_up(nn.Module):
         self.e_idx = e_idx
         self.args = args
         self.up_nodes = up_nodes
-        self.mpl1 = ProcessorLayer(in_channels=channel_in, out_channels=channel_out//2)
-        self.mpl2 = ProcessorLayer(in_channels=channel_out//2, out_channels=channel_out)
-        self.mpl_skip = ProcessorLayer(in_channels=channel_in, out_channels=channel_out)
+        self.mpl1 = MessagePassingLayer(channel_in, channel_out//2, args)
+        self.mpl2 = MessagePassingLayer(channel_out//2, channel_out, args)
+        self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args)
         self.unpool = Unpool()
         self.act1 = nn.LeakyReLU()
     
@@ -109,10 +117,7 @@ class Res_up(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = self.unpool(data.x, self.up_nodes, mask)
             data.weights = self.unpool(data.weights, self.up_nodes, mask)
-            # This should not work
-            data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx)
-            data.edge_index, data.edge_attr = pool_edge(np.arange(self.up_nodes), g, data.edge_attr)
-            #data.edge_index = g
+            data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx, self.args)
             batch_lst.append(data)
         b_data = Batch.from_data_list(batch_lst).to(self.args.device)
         return b_data

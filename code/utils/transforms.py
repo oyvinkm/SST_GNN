@@ -78,13 +78,21 @@ class AttributeMask(BaseTransform):
 
 @functional_transform("FlipGraph")
 class FlipGraph(BaseTransform):
-    """Flips a graph horizontally"""
+    """Flips a graph horizontally. This changes the following attributes:
+        - Velocities at nodes : x
+        - Mesh positions for plotting : mesh_pos
+        - Edge attributes between nodes : edge_attr.
+    """
 
     def __call__(self, data: Data) -> Data:
         x = data.x.clone()
         mesh_pos = data.mesh_pos.clone()
+        edge_attr = data.edge_attr.clone()
         x[..., 0] = -x[..., 0]
+        edge_attr[...,0] *= -1
         mesh_pos[..., 0] = -mesh_pos[..., 0]
+
+        data.edge_attr = edge_attr
         data.mesh_pos = mesh_pos
         data.x = x
 

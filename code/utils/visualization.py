@@ -135,7 +135,7 @@ def make_gif(model, dataset, args):
             diff_data.x = pred_data.x - gt_data.x.to(args.device)
     logger.info("processing done...")
     gif_name = args.model_file + "anim.gif"
-    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 25)
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
     logger.success("gif complete...")
 
 

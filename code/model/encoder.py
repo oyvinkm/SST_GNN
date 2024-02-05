@@ -4,10 +4,12 @@ from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
 from torch_geometric.data import Batch
 from loguru import logger
+import os
 try:
     from utility import MessagePassingLayer, pool_edge
 except:
     from .utility import MessagePassingLayer, pool_edge
+    
 
 
 class Encoder(nn.Module):
@@ -18,6 +20,7 @@ class Encoder(nn.Module):
         self.ae_layers = args.ae_layers
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
+        self.dim_z = self.latent_dim
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
         self.latent_vec_dim = len(m_ids[-1])
@@ -75,14 +78,23 @@ class Encoder(nn.Module):
             z = self.mlp_mu(x_t)
             kl = None
 
+        self.save_bdata(b_data)
+
         return kl, z, b_data
+
+
+
+    def save_bdata(self, b_data):
+        PATH = os.path.join(self.args.graph_structure_dir, 'b_data.pt')
+        if not os.path.isfile(PATH):
+            torch.save(b_data, PATH)
 
     def sample(self, mu, logvar):
         """Shamelessly stolen from https://github.com/julschoen/Latent-Space-Exploration-CT/blob/main/Models/VAE.py"""
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps*std
-    
+
     def batch_to_dense_transpose(self, b_data):
         count = np.unique(b_data.batch.cpu(), return_counts= True)
         count = list(zip(count[0], count[1]))
@@ -93,7 +105,7 @@ class Encoder(nn.Module):
             b_lst.append(b_data.x[start:end].T)
         batch = torch.stack(b_lst)
         return batch
-    
+
 class Res_down(nn.Module):
     def __init__(self, channel_in, channel_out, args, m_id, m_g):
         super(Res_down, self).__init__()
