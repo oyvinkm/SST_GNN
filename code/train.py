@@ -15,6 +15,7 @@ from utils.transforms import AttributeMask, FlipGraph
 from torch.nn import functional as F
 from torch_geometric import transforms as T
 from matplotlib import pyplot as plt
+from random import randint
 
 from utils.visualization import plot_dual_mesh
 
@@ -40,7 +41,6 @@ def train(model, train_loader, val_loader, optimizer, args):
         manager = enlighten.get_manager()
         epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
     for epoch in range(args.epochs):
-        logger.info(f"epoch : {epoch}")
         if args.progress_bar:
             epochs.update()
             batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
@@ -56,6 +56,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch.x = F.normalize(batch.x)
             batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
+            # b_data = augment_batch(b_data)
             optimizer.zero_grad()  # zero gradients each time
             pred, kl = model(b_data)
             rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
@@ -108,7 +109,6 @@ def validate(model, val_loader, criterion, epoch, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
-        b_data = transform_batch(batch, args)
         pred, _ = model(b_data, Train=False)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
@@ -139,19 +139,18 @@ def test(model, test_loader, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
-        b_data = transform_batch(batch, args)
         pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
-        # total_accuracy += kld(input=pred.x, target=batch.x).item()
+        total_accuracy += kld(input=torch.log(pred.x), target=batch.x).item()
         loss_over_t.append(loss.item())
         ts.append(batch.t.cpu())
 
     total_loss /= idx
     total_accuracy /= idx
-    # save_accuracy(total_accuracy, args)
+    save_accuracy(total_accuracy, args)
     return total_loss, loss_over_t, ts
 
 def save_accuracy(accuracy, args):
@@ -163,21 +162,37 @@ def save_accuracy(accuracy, args):
         f.write("accuracy: %s" % (accuracy))
     f.close()
     
+def augment_batch(b_data):
+    augment = randint(0,1)
+    if augment:
+        augments = T.Compose([FlipGraph()]) 
+        b_data = augments(b_data.clone())
+    return b_data
 
 def transform_batch(b_data, args):
     if args.transform:
-        transforms = T.Compose([FlipGraph(), AttributeMask(args.transform_p, args.device)])
+        transforms = T.Compose([AttributeMask(args.transform_p, args.device)])
         trsfmd = transforms(b_data.clone())
         return trsfmd
     else:
         return b_data.clone()
     
 def save_model(best_model, args):
+    """Saves the model and the decoder in a folder"""
     if not os.path.isdir(args.save_model_dir):
         os.mkdir(args.save_model_dir)
     model_name = "model_" + args.time_stamp
+    final_place = os.path.join(args.save_model_dir, model_name)
+    if not os.path.isdir(final_place):
+        os.mkdir(final_place)
+    
     path = os.path.join(args.save_model_dir, model_name + ".pt")
-    torch.save(best_model.state_dict(), path)
+    decoder_path = os.path.join(final_place, "decoder.pt")
+    encoder_path = os.path.join(final_place, "encoder.pt")
+    model_path = os.path.join(final_place, "model.pt")
+    torch.save(best_model.decoder.state_dict(), decoder_path)
+    torch.save(best_model.encoder.state_dict(), encoder_path)
+    torch.save(best_model.state_dict(), model_path)
 
 def save_args(args):
     if not os.path.isdir(args.save_args_dir):

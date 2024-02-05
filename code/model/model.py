@@ -11,11 +11,18 @@ from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree
 from torch_scatter import scatter
 from loguru import logger
-from .encoder_alt import Encoder
-from .decoder_alt import Decoder
+from model.utility import vgae_with_shift
+try:
+    from encoder import Encoder
+    from decoder import Decoder
+except:
+    from .encoder import Encoder
+    from .decoder import Decoder
+from dataprocessing.dataset import MeshDataset
+import os
 
 
-class MultiScaleAutoEncoder_Alt(nn.Module):
+class MultiScaleAutoEncoder(nn.Module):
     """
     Multiscale Auto Encoder consist of n_layer of Message Passing Layers (MPL) with
     pooling and unpooling operations in between in order to obtain a coarse latent
@@ -27,6 +34,7 @@ class MultiScaleAutoEncoder_Alt(nn.Module):
 
     def __init__(self, args, m_ids, m_gs, e_s):
         super().__init__()
+        self.args = args
         self.encoder = Encoder(args, m_ids, m_gs)
         self.decoder = Decoder(args, m_ids, m_gs, e_s)
         self.placeholder = Batch.from_data_list([Data(x=torch.ones(len(m_ids[-1]), args.latent_dim), 
@@ -34,13 +42,19 @@ class MultiScaleAutoEncoder_Alt(nn.Module):
                                                                    weights = torch.ones(len(m_ids[-1])))])
         
     def forward(self, b_data, Train=True):
+
         kl, z, b_data = self.encoder(b_data, Train)
         b_data = self.decoder(b_data, z)
         return b_data, kl
     
-# @gmsvae_with_shift
-# def make_gmsvae(model_path, args, m_ids, g_ids):
-#     model = MultiScaleAutoEncoder(args, m_ids, m_gs)
-#     model.load_state_dict(torch.load(model_path))
-#     model = model.eval()
-#     return model
+
+# Not sure why I should wrap it in this function
+@vgae_with_shift
+def make_vgae(args, m_ids, m_gs, e_s):
+    dec = Decoder(args, m_ids, m_gs, e_s)
+    dec = dec.to(args.device)
+    decoder_file = f"../logs/model_chkpoints/{args.model_file}"
+    checkpoint = torch.load(decoder_file)
+    dec.load_state_dict(checkpoint)
+    dec.eval()
+    return dec

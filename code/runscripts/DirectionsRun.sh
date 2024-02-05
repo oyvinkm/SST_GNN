@@ -3,17 +3,18 @@
 
 now="$(date +"%y_%m_%d-%H.%M")"
 day="$(date +"%d-%m-%y")"
+prefix="../logs"
 
-python run.py \
+python DirectionsRun.py \
     -ae_layers 2 \
-    -batch_size 16 \
+    -batch_size 8 \
     -edge_conv True \
-    -epochs 201 \
+    -epochs 1 \
     -hidden_dim 32 \
     -instance_id 1 \
     -latent_space True \
-    -loss_step 50 \
-    -log_step 50 \
+    -loss_step 2 \
+    -log_step 10 \
     -lr 1e-4 \
     -latent_dim 128 \
     -logger_lvl DEBUG \
@@ -22,21 +23,21 @@ python run.py \
     -mpl_layers 1 \
     -mpl_ratio 0.8 \
     -make_gif False \
-    -model_file model_23_11_29-18.22.pt \
+    -model_file decoder.pt \
     -num_blocks 1 \
     -normalize False \
     -num_workers 1 \
     -out_feature_dim 11 \
     -opt adam \
-    -pool_strat ASA \
+    -pool_strat SAG \
     -progress_bar False \
     -random_search False \
     -residual True \
-    -save_plot_dir logs/plots/$day \
-    -save_mesh_dir logs/meshes/$day \
-    -save_args_dir logs/args/$day \
-    -save_model_dir logs/model_chkpoints/$day \
-    -save_gif_dir logs/gifs/$day \
+    -save_args_dir $prefix/args/$day \
+    -save_gif_dir $prefix/gifs/$day \
+    -save_mesh_dir $prefix/meshes/$day \
+    -save_model_dir $prefix/model_chkpoints/ \
+    -save_plot_dir $prefix/plots/$day \
     -shuffle True \
     -save_plot True \
     -save_model True \
