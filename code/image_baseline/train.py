@@ -100,7 +100,7 @@ class Trainer(object):
             }, self.model_path)
 
   def validate(self, net, val_loader, epoch):
-    val_loss = []
+    val_loss = 0.
     with torch.no_grad():
       net.eval()
       for j, (data, _) in enumerate(val_loader):
@@ -108,10 +108,10 @@ class Trainer(object):
           logger.debug(f'Val input: {inputs.shape}')
           _, recon = net(inputs, Train = False)
           rec_loss = self.criterion(recon, inputs)
-          val_loss.append(rec_loss.item())
+          val_loss += rec_loss.item()
           if epoch % 10 == 0 and j == 0: 
             self.save_image(recon[0], inputs[0], epoch)
-    return sum(val_loss)/len(val_loss)
+    return val_loss / len(val_loader)
 
   def train(self, no_epochs, 
             net, 
@@ -138,9 +138,8 @@ class Trainer(object):
         if progress_bar:
           epochs.update()
           batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
-        best_model = None
-        losses = []
-        kls = []
+        tot_loss = 0.
+        kls = 0.
         for i, (data, _) in enumerate(train_loader):
             if progress_bar:
               batch_counter.update()
@@ -151,15 +150,16 @@ class Trainer(object):
             # Forward + backward + optimize
             kl, recon = net(inputs, Train = True)
             logger.debug(f'{kl=}')
-            kls.append(kl.cpu().detach().numpy())
             rec_loss = self.criterion(recon, inputs)
             loss = self.beta*kl + rec_loss
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            losses.append(loss.item())
-        
+            tot_loss += loss.item(); kls += kl.item()
+        kls /= len(train_loader)
+        tot_loss /= len(train_loader)
         tot_val_loss = self.validate(net, val_loader, epoch)
+        epoch_losses.append(tot_loss)
         val_loss.append(tot_val_loss)
         if tot_val_loss < best_val_loss:
             logger.success(f'Val loss : {tot_val_loss}\tBest loss : {best_val_loss}')
@@ -169,11 +169,9 @@ class Trainer(object):
             best_val_loss = tot_val_loss
         if progress_bar:
           batch_counter.close()
-        epoch_losses.append(sum(losses)/len(losses))
         #kulback = np.mean(kls)
         if epoch % 10 == 0:
-          logger.success('[%d, %5d] train loss: %.3f\tKL Divergence: %.3f\tKL: %.3f\tval loss: %.3f' %
-                (epoch + 1, i + 1, epoch_losses[-1], self.beta*np.mean(kls), np.mean(kls), tot_val_loss))
+          logger.success(f'[{epoch + 1, i + 1}] | epoch loss : {epoch_losses[-1]:.4f} | KL Divergence:{self.beta*np.mean(kls):.5f} | KL: {kls:.3f} | val loss: {tot_val_loss:.3f}')
     if progress_bar:
       epochs.close()
       manager.stop() 
@@ -183,16 +181,13 @@ class Trainer(object):
   def test(self, net, test_loader):
     logger.success(f'Testing.. ')
     test_loss = []
-    os.mkdir(os.path.join(self.image_folder, 'test'))
+    os.mkdir(os.path.join(self.image_folder, 'viz_test'))
     with torch.no_grad():
       for i, (data, _) in enumerate(test_loader):
         inputs = data.to(self.device)
-        logger.info(f'size input : {inputs.shape}')
-        try:
-          _, recon = net(inputs, Train = False)
-          rec_loss = self.criterion(recon, inputs)
-          test_loss.append(rec_loss.item())
-          self.save_image(recon[0], inputs[0], f'test/test_{i}')
-        except:
-          logger.error(f'Something is None\nnet : {type(net)}\n{type(inputs)}')
+        logger.info(f'{i} {inputs.shape=}')
+        _, recon = net(inputs, Train = False)
+        rec_loss = self.criterion(recon, inputs)
+        test_loss.append(rec_loss.item())
+        self.save_image(recon[0], inputs[0], f'test/test_{i}')
     return sum(test_loss)/len(test_loss)

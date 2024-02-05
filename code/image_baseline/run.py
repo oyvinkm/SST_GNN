@@ -72,7 +72,7 @@ def main():
   # ----- SETUP ------
   test_ratio = .2
   val_ratio = .2
-  batch_size = 8
+  batch_size = 16
 
   transform = T.Compose([T.Resize((128, 512)),
                         #T.Grayscale(),
@@ -92,9 +92,10 @@ def main():
   val_loader = DataLoader(val_data, 
                           batch_size=1, 
                           shuffle=True)
-  logger.success(f'Data Loaded\nTrain : \
-                  {len(train_loader) * batch_size}\n \
-                  Test : {len(test_loader)}\nVal : {len(val_loader)}')
+  logger.success(f'Data Loaded\n \
+                  Train : {len(train_loader) * batch_size}\n \
+                  Test : {len(test_loader)}\n \
+                  Val : {len(val_loader)}')
 
   # Pre Train
   augmentation = T.Compose([AddGaussianNoise(device = device), 
@@ -106,27 +107,31 @@ def main():
                             T.RandomVerticalFlip(p = .2),
                             #T.RandomHorizontalFlip(p = .2)
                           ])
-  net = VAE(channel_in = 3, z = 10, device = device).to(device)
- # model_path = 'model_chkpoints/model_VAE_2023_11_26-14.51.pt'
-  model_path = None
-
   timestamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
-
+  z = 32
   start_epoch = 0
-  no_epochs = 200
-  lr = 1e-2
+  no_epochs = 100
+  lr = 1e-4
   eps = 1e-5
   beta = 1e-3
-  criterion = 'MSE'
+  criterion = 'LMSE'
   args = {'epochs' : (no_epochs - start_epoch), 
           'lr' : {lr},
           'eps' : {eps},
           'beta' : {beta},
           'criterion' : {criterion},
-          'batch_size' : {batch_size}}
-  with open(f"args_{timestamp}.txt", 'w') as f:  
+          'batch_size' : {batch_size},
+          'z' : {z}}
+
+  with open(f"args/args_{timestamp}.txt", 'w') as f:  
     for key, value in args.items():  
         f.write('%s:%s\n' % (key, value))
+    f.close()
+  net = VAE(channel_in = 3, z = 64, device = device).to(device)
+#  model_path = 'model_chkpoints/model_VAE_2023_11_26-14.51.pt'
+  model_path = None
+
+  
   optimizer = torch.optim.Adam(net.parameters(), lr=lr, eps=eps)
   if model_path is not None:
      state_dict = torch.load(model_path)
@@ -143,7 +148,7 @@ def main():
                 optimizer = optimizer,
                 device = device,
                 start_epoch = start_epoch,
-                progress_bar = True)
+                progress_bar = False)
   test_loss = trainer.test(net = best_model, test_loader=test_loader)
   logger.success(f'Test Loss: {test_loss}')
 
