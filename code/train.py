@@ -55,6 +55,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch = batch.to(args.device)
             batch.x = F.normalize(batch.x)
             batch.edge_attr = F.normalize(batch.edge_attr)
+            logger.debug(f'{batch=}')
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
             optimizer.zero_grad()  # zero gradients each time
@@ -110,8 +111,9 @@ def validate(model, val_loader, criterion, epoch, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
-        pred, _ = model(batch, Train=False)
-        loss = criterion(pred.x[:,:2], batch.x[:,:2])
+        b_data = batch.clone()
+        pred, _ = model(b_data, Train=False)
+        loss = criterion(pred.x[:,:2], b_data.x[:,:2])
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
@@ -125,6 +127,7 @@ def test(model, test_loader, args):
     Performs a test run on our final model with the test
     saved in the test_loader.
     """
+    logger.debug(f'======= TESTING =======')
     kld = nn.KLDivLoss(reduction="batchmean")
 
     loss_over_t = []
@@ -140,11 +143,16 @@ def test(model, test_loader, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
+        # Needs to clone as operations happens in place
+        b_data = batch.clone()
+        logger.error(f'{b_data=}')
         pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()
+        logger.error(f'{pred.x.shape=}')
+        logger.error(f'{batch.x.shape=}')
         total_accuracy += kld(input=torch.log(pred.x), target=batch.x).item()
         loss_over_t.append(loss.item())
         ts.append(batch.t.cpu())

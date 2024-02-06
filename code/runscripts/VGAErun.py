@@ -198,7 +198,7 @@ def main():
     )
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
-
+    logger.error(f'test loader: {next(iter(test_loader))}')
     # TRAINING
     train_losses, val_losses, model = train(
         model=model,
