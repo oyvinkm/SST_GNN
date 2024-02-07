@@ -141,20 +141,23 @@ def main():
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
     dataset = MeshDataset(args=args)
-    args.in_dim_node, args.in_dim_edge = (
+    args.in_dim_node, args.in_dim_edge, args.n_nodes = (
         dataset[0].num_features,
         dataset[0].edge_attr.shape[1],
+        dataset[0].x.shape[0]
     )
-
+    logger.debug(dataset[0].x.shape)
+    logger.debug(dataset[0].edge_attr.shape)
+    logger.debug(dataset.m_gs[0].shape)
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.save_graphstructure_dir, f'{args.instance_id}')
     # this attribute is also used in encoder ^
-    if not os.path.isdir(args.graph_structure_dir):
-        os.mkdir(args.graph_structure_dir)
-        torch.save(dataset.m_ids, os.path.join(args.graph_structure_dir, 'm_ids.pt'))
-        torch.save(dataset.m_gs, os.path.join(args.graph_structure_dir, 'm_gs.pt'))
-        torch.save(dataset.e_s, os.path.join(args.graph_structure_dir, 'e_s.pt'))
-    m_ids, m_gs, e_s = torch.load(os.path.join(args.graph_structure_dir,'m_ids.pt')), torch.load(os.path.join(args.graph_structure_dir,'m_gs.pt')), torch.load(os.path.join(args.graph_structure_dir,'e_s.pt'))
+    # if not os.path.isdir(args.graph_structure_dir):
+    #     os.mkdir(args.graph_structure_dir)
+    #     torch.save(dataset.m_ids, os.path.join(args.graph_structure_dir, 'm_ids.pt'))
+    #     torch.save(dataset.m_gs, os.path.join(args.graph_structure_dir, 'm_gs.pt'))
+    #     torch.save(dataset.e_s, os.path.join(args.graph_structure_dir, 'e_s.pt'))
+    # m_ids, m_gs, e_s = torch.load(os.path.join(args.graph_structure_dir,'m_ids.pt')), torch.load(os.path.join(args.graph_structure_dir,'m_gs.pt')), torch.load(os.path.join(args.graph_structure_dir,'e_s.pt'))
 
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
@@ -197,7 +200,7 @@ def main():
     )
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
-
+    logger.error(f'test loader: {next(iter(test_loader))}')
     # TRAINING
     train_losses, val_losses, model = train(
         model=model,

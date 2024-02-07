@@ -134,6 +134,10 @@ class Trainer(object):
     tot_val_loss = np.inf
     best_model = net
     for epoch in range(start_epoch, no_epochs):  # Loop over the dataset multiple times
+        if epoch / no_epochs == 0.9:
+          for g in optimizer.param_groups:
+            g['lr'] /= 10
+          logger.succes(f'Learning rate reduced by factor 10 to {optimizer.lr}')
         net.train()
         if progress_bar:
           epochs.update()

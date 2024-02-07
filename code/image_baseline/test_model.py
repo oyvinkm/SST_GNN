@@ -46,7 +46,7 @@ class MyDataset(Dataset):
         return len(self.subset)
 
 net = VAE(channel_in = 3, z = 32, device = device).to(device)
-model_path = 'model_chkpoints/model_VAE_2024_01_16-08.17.pt'
+model_path = 'baselines/2024_01_31-12.30.pt/model_VAE_2024_01_31-12.30.pt'
 
 if model_path is not None:
   state_dict = torch.load(model_path)
