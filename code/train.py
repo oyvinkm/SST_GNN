@@ -25,10 +25,7 @@ def train(model, train_loader, val_loader, optimizer, args):
     test and validation functions.
     """
     model = model.to(args.device)
-    # TODO: Save args in a file with date and time
 
-    # train
-    # NOTE: Might make dependent on args which loss function
 
     criterion = LMSELoss()
 
@@ -109,6 +106,7 @@ def validate(model, val_loader, criterion, epoch, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
+        b_data = transform_batch(batch, args)
         pred, _ = model(b_data, Train=False)
         loss = criterion(pred.x[:,:2], batch.x[:,:2])
         total_loss += loss.item()

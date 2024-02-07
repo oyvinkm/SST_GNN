@@ -7,9 +7,9 @@ prefix="../logs"
 
 python DirectionsRun.py \
     -ae_layers 2 \
-    -batch_size 8 \
+    -batch_size 16 \
     -edge_conv True \
-    -epochs 1 \
+    -epochs 2000 \
     -hidden_dim 32 \
     -instance_id 1 \
     -latent_space True \

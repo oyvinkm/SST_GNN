@@ -6,15 +6,17 @@ import torch
 import os
 from datetime import datetime
 import warnings
+from torch_geometric.loader import DataLoader
+from loguru import logger
 
 
 sys.path.append('../')
 from model.model import make_vgae
+from dataprocessing.utils.loading import split_pairs
 from model.utility import save_run_params, DEFORMATOR_TYPE_DICT
 from model.deformator import LatentDeformator
 from model.shiftpredictor import ResNetShiftPredictor, LeNetShiftPredictor
 from latent_trainer import Params, Trainer
-from loguru import logger
 
 
 from dataprocessing.dataset import MeshDataset
@@ -116,13 +118,13 @@ def main():
     logger.add(sys.stderr, level=args.logger_lvl)
     args.device = ("cuda" if torch.cuda.is_available() else "cpu")
 
-    graph_structure_dir = os.path.join(args.save_graphstructure_dir, f'{args.instance_id}')
-    m_ids, m_gs, e_s = torch.load(os.path.join(graph_structure_dir,'m_ids.pt')), torch.load(os.path.join(graph_structure_dir,'m_gs.pt')), torch.load(os.path.join(graph_structure_dir,'e_s.pt'))
+    # graph_structure_dir = os.path.join(args.save_graphstructure_dir, f'{args.instance_id}')
+    # m_ids, m_gs, e_s = torch.load(os.path.join(graph_structure_dir,'m_ids.pt')), torch.load(os.path.join(graph_structure_dir,'m_gs.pt')), torch.load(os.path.join(graph_structure_dir,'e_s.pt'))
 
     direction_args = {
         'deformator' : 'proj',
         'directions_count' : 1,
-        'shift_predictor' : 'LeNet',
+        # 'shift_predictor' : 'LeNet',
         'out' : 'save_location',
         'gen_path' : os.path.join(args.save_model_dir, args.model_file),
         'def_random_init' : True,
@@ -131,22 +133,25 @@ def main():
 
     save_run_params(direction_args)
     
-    G = make_vgae(args, m_ids, m_gs, e_s)
+    # G = make_vgae(args, m_ids, m_gs, e_s)
 
-    deformator = LatentDeformator(shift_dim = G.latent_dim,
-                                  input_dim = direction_args['directions_count'],
-                                  out_dim = G.latent_dim,
+    deformator = LatentDeformator(shift_dim = args.latent_dim,
+                                  input_dim = args.latent_dim,
+                                  out_dim = args.latent_dim,
                                   type = DEFORMATOR_TYPE_DICT[direction_args['deformator']],
                                   random_init = direction_args['def_random_init']).to(args.device)
     
+    dataset_pairs = torch.load(os.path.join('..','data','latent_space','encoded_dataset_pairs.pt'))
+    train_set, validation_set = split_pairs(dataset_pairs)
+    
+    train_loader = DataLoader(
+        train_set, batch_size=32, shuffle=args.shuffle)
+    validation_loader = DataLoader(
+        validation_set, batch_size=1, shuffle=args.shuffle)
 
-    if direction_args['shift_predictor'] == 'ResNet':
-        shift_predictor = ResNetShiftPredictor(deformator.input_dim).to(args.device)
-    else:
-        shift_predictor = LeNetShiftPredictor(deformator.input_dim, 1).to(args.device)
     params = Params(**direction_args)
     trainer = Trainer(params, out_dir=direction_args['out'], device=args.device)
-    trainer.train(G, deformator, shift_predictor, args)
+    trainer.train(deformator, train_loader, validation_loader, args)
 
     # save_results_charts(G, deformator, params, trainer.log_dir, device = args.device)
 

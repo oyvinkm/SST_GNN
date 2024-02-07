@@ -19,7 +19,8 @@ sys.path.append('../')
 sys.path.append('dataprocessing')
 sys.path.append('model')
 sys.path.append('utils')
-from dataprocessing.dataset import MeshDataset
+from dataprocessing.dataset import MeshDataset, DatasetPairs
+from dataprocessing.utils.loading import save_traj_pairs
 from model.model import MultiScaleAutoEncoder
 from utils.visualization import plot_dual_mesh, make_gif, plot_test_loss, plot_loss
 from utils.opt import build_optimizer
@@ -109,6 +110,7 @@ parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
 parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
+parser.add_argument('-train', type=t_or_f, default=True)
 parser.add_argument('-transform', type=t_or_f, default=True)
 parser.add_argument('-transform_p', type=float, default=0.1)
 parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
@@ -158,7 +160,7 @@ def main():
     # Initialize Model
     if not args.latent_space:
         logger.warning("Model is not going into latent_space")
-    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s)
+    model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs, dataset.e_s)
     model = model.to(args.device)
     if args.load_model:
         model_path = os.path.join(args.save_model_dir , args.model_file)
@@ -205,12 +207,27 @@ def main():
         args=args,
     )
 
+    pairs = 'data/cylinder_flow/pairs'
+    save_traj_pairs(args.instance_id)
+    dataset_pairs = DatasetPairs(args = args)
     encoder = model.encoder.to(args.device)
-    encoder_loader = DataLoader(dataset, batch_size = 1)
+    encoder_loader = DataLoader(dataset_pairs, batch_size = 1)
     latent_space_path = os.path.join('..','data','latent_space')
-    for idx, graph in enumerate(encoder_loader):
-        _, z, _ = encoder(graph.to(args.device))
-        torch.save(z, os.path.join(f'{latent_space_path}', f'{idx}.pt'))
+    pair_list = []
+    pair_list_file = os.path.join(f'{latent_space_path}', f'encoded_dataset_pairs.pt')
+    for idx, (graph1, graph2) in enumerate(encoder_loader):
+        logger.debug(idx)
+        _, z1, _ = encoder(graph1.to(args.device))
+        _, z2, _ = encoder(graph2.to(args.device))
+        if os.path.isfile(pair_list_file):
+            pair_list = torch.load(pair_list_file)
+        
+        pair_list.append((torch.squeeze(z1, dim = 0), torch.squeeze(z2, dim = 0)))
+            
+        torch.save(pair_list, pair_list_file)
+        # deleting to save momoryh
+        del pair_list
+    
     
     if args.save_plot:
         loss_name = "loss_" + args.time_stamp
@@ -226,10 +243,10 @@ def main():
             val_label="Validation Loss",
             PATH=PATH,
         )
-        test_loss, loss_over_t, ts = test(model=model, test_loader=test_loader, args=args)
-        loss_name = "loss-over-t_" + args.time_stamp
-        PATH = os.path.join(args.save_loss_over_t_dir, f"{loss_name}.png")
-        plot_test_loss(loss_over_t, ts, PATH=PATH)
+        # test_loss, loss_over_t, ts = test(model=model, test_loader=test_loader, args=args)
+        # loss_name = "loss-over-t_" + args.time_stamp
+        # PATH = os.path.join(args.save_loss_over_t_dir, f"{loss_name}.png")
+        # plot_test_loss(loss_over_t, ts, PATH=PATH)
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", ".*Sparse CSR tensor support is in beta state.*")

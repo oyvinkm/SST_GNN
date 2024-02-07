@@ -3,13 +3,14 @@
 
 now="$(date +"%y_%m_%d-%H.%M")"
 day="$(date +"%d-%m-%y")"
+# Some warningsremoval for floating-point round-off errors
 prefix="../logs"
-
+export TF_ENABLE_ONEDNN_OPTS=0
 python VGAErun.py \
     -ae_layers 2 \
     -batch_size 16 \
     -edge_conv True \
-    -epochs 35 \
+    -epochs 1 \
     -hidden_dim 32 \
     -instance_id 1 \
     -latent_space True \
@@ -45,8 +46,9 @@ python VGAErun.py \
     -save_losses True \
     -save_mesh True \
     -test_ratio 0.1 \
-    -transform_p 0.3 \
     -time_stamp $now \
+    -train True \
     -transform False \
+    -transform_p 0.3 \
     -val_ratio 0.1 \
     -weight_decay 0.0005 \

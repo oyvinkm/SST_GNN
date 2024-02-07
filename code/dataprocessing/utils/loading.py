@@ -212,16 +212,14 @@ def split_pairs(data, ratio = .1):
   return train_data, test_data
 
 def save_traj_pairs(instance_id, ratio=.1):
-  pairs = 'data/cylinder_flow/pairs'
+  pairs = '../data/cylinder_flow/pairs'
   if not os.path.isdir(pairs):
     os.mkdir(pairs)
-  trajectory = lambda id : f'data/cylinder_flow/trajectories/trajectory_{id}.pt'
+  trajectory = lambda id : f'../data/cylinder_flow/trajectories/trajectory_{id}.pt'
   data_list = torch.load(trajectory(instance_id))
   data_list = sorted(data_list, key = lambda g : g.t)
   data_pairs = list(zip(data_list[:-2], data_list[1:-1]))
   train_data, test_data = split_pairs(data_pairs)
-  print(f'{len(train_data)=}')
-  print(f'{len(test_data)=}')
   train_path = os.path.join(pairs, f'train_pair_{instance_id}.pt')
   test_path = os.path.join(pairs, f'test_pair_{instance_id}.pt')
   torch.save(train_data, train_path)
