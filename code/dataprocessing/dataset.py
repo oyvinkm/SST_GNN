@@ -4,6 +4,7 @@ import pickle
 from typing import Callable, Optional
 import torch
 from torch_geometric.data import Dataset
+from loguru import logger
 from dataprocessing.utils.normalization import get_stats
 from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
 
@@ -55,6 +56,7 @@ class MeshDataset(Dataset):
       if not mmexist:
           edge_i = self.traj_data[0].edge_index
           n = self.traj_data[0].x.shape[0]
+          logger.debug(f'n : {n}')
           m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
                                                     self.layer_num,
                                                     n=n,

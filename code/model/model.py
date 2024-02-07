@@ -42,9 +42,11 @@ class MultiScaleAutoEncoder(nn.Module):
                                                                    weights = torch.ones(len(m_ids[-1])))])
         
     def forward(self, b_data, Train=True):
-
+        logger.debug(f'Pre encode: {b_data=}')
         kl, z, b_data = self.encoder(b_data, Train)
+        logger.debug(f'Bottom: {b_data=}')
         b_data = self.decoder(b_data, z)
+        logger.debug(f'Post Decode: {b_data=}')
         return b_data, kl
     
 
