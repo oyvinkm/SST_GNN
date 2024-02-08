@@ -3,7 +3,7 @@
 """
 import copy
 import os
-
+import json
 import numpy as np
 import torch
 import enlighten
@@ -25,10 +25,7 @@ def train(model, train_loader, val_loader, optimizer, args):
     test and validation functions.
     """
     model = model.to(args.device)
-    # TODO: Save args in a file with date and time
 
-    # train
-    # NOTE: Might make dependent on args which loss function
 
     criterion = LMSELoss()
 
@@ -111,6 +108,7 @@ def validate(model, val_loader, criterion, epoch, args):
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
         batch.edge_attr = F.normalize(batch.edge_attr)
+        b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
         loss = criterion(pred.x[:,:2], b_data.x[:,:2])
@@ -204,13 +202,13 @@ def save_model(best_model, args):
     torch.save(best_model.state_dict(), model_path)
 
 def save_args(args):
+    # logger.debug(f'{args.__dict__=}')
     if not os.path.isdir(args.save_args_dir):
         os.mkdir(args.save_args_dir)
     args_name = "args_" + args.time_stamp
-    path = os.path.join(args.save_args_dir, args_name + ".txt")
+    path = os.path.join(args.save_args_dir, args_name + ".json")
     with open(path, "w") as f:
-        for key, value in args.__dict__.items():
-            f.write("%s: %s\n" % (key, value))
+        json.dump(args.__dict__, f)
 
 def save_mesh(pred, truth, idx, args):
     if not os.path.isdir(args.save_mesh_dir):
