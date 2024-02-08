@@ -10,6 +10,29 @@ from utils.visualization import plot_loss
 from loguru import logger
 
 
+def save_difference_norms(train_set):
+    norms = []
+    for z1, z2 in train_set:
+        res = torch.norm(z2 - z1)
+        norms.append(res.item())
+    logger.debug(f'{res.shape=}')
+    logger.debug(f'{len(norms)=}')
+    logger.debug(f'{norms=}')
+    PLOTS_PATH = os.path.join('..','logs','direction','norms')
+    if not os.path.isdir(PLOTS_PATH):
+        os.mkdir(PLOTS_PATH)
+    PATH = os.path.join(PLOTS_PATH, f'difference_norms.pdf')
+
+    f = plt.figure()
+    plt.title('Difference Norms Plot')
+    plt.plot(norms)#, label="norm of difference between z1 and z2")
+    plt.grid(True)
+    plt.xlabel('t')
+    plt.ylabel('norm of vector from z1 to z2')
+    
+    plt.legend()
+    f.savefig(PATH, bbox_inches='tight')
+
 class Params(object):
     """Sets up parameters for the latenttrainer"""
     def __init__(self, **kwargs):
@@ -180,7 +203,7 @@ class Trainer(object):
         print('Step {} accuracy: {:.3}'.format(step, accuracy.item()))
         self.save_models(deformator, shift_predictor, step)
 
-    def train(self, deformator, train_loader, validation_loader, args, multi_gpu=False):
+    def train(self, deformator, train_loader, validation_loader, deformator_args, multi_gpu=False):
         # G.to(self.device).eval()
         deformator.to(self.device).train()
 
@@ -192,7 +215,8 @@ class Trainer(object):
         avg_correct_percent, avg_loss, avg_label_loss, avg_shift_loss = avgs
 
         train_losses = []
-        for epoch in range(args.epochs):
+        val_losses = []
+        for epoch in range(deformator_args.epochs):
             # It's approximately 2 seconds for 100 epochs
             total_loss = 0
             for idx, batch in enumerate(train_loader):
@@ -200,59 +224,61 @@ class Trainer(object):
                 
                 deformator.zero_grad()
 
-                # Deformation
-                shift_prediction = deformator(z1).squeeze(dim = 3)
+                # Deformation for 'proj'
+                # shift_prediction = deformator(z1).squeeze(dim = 3)
 
-                z2_prediction = z1 + shift_prediction
+                # Deformation for 'id'
+                shift_prediction = deformator(z1)
+                z2_prediction = z1 + shift_prediction.squeeze(dim=2)
 
-                shift_loss = torch.mean(torch.abs(z2_prediction - z2))
-
-                loss = shift_loss
+                loss = torch.mean(torch.abs(z2_prediction - z2))
                 loss.backward()
-
-                deformator_opt.step()
+                if deformator_opt is not None:
+                    deformator_opt.step()
 
                 avg_loss.add(loss.item())
                 total_loss += loss.item()
             total_loss /= len(train_loader)
             train_losses.append(total_loss)
-            val_loss = self.validate(deformator, validation_loader, epoch, args)
+            val_loss = self.validate(deformator, validation_loader, epoch)
             val_losses.append(val_loss)
-
-        save_plots(train_losses, val_losses, args)
+        save_plots(deformator, train_losses, val_losses, deformator_args)
     
     @torch.no_grad()
-    def validate(self, deformator, validation_loader, epoch, args):
+    def validate(self, deformator, validation_loader, epoch):
         total_loss = 0
-        model.eval()
+        deformator.eval()
         for idx, batch in enumerate(validation_loader):
-            batch = batch.to(args.device)
             z1, z2 = batch
-            shift_prediction = deformator(z1).squeeze(dim = 3)
-            
+
+            # Deformation for 'proj'
+            # shift_prediction = deformator(z1).squeeze(dim = 3)
+
+            # Deformation for 'id'
+            shift_prediction = deformator(z1)
+
             z2_prediction = z1 + shift_prediction
 
             shift_loss = torch.mean(torch.abs(z2_prediction - z2))
 
-            total_loss += loss.item()
+            total_loss += shift_loss.item()
         return total_loss / len(validation_loader)
 
 
-def save_plots(train_losses, validation_losses, args):
-    """Saves loss plots at ../logs/direction/plots
+def save_plots(deformator, train_losses, validation_losses, deformator_args):
+    """Saves loss plots for deformator at ../logs/direction/plots
     It includes train_losses and validation losses
     """
-    model_name='model_nl'
-
 
     PLOTS_PATH = os.path.join('..','logs','direction','plots')
     if not os.path.isdir(PLOTS_PATH):
         os.mkdir(PLOTS_PATH)
-    PATH = os.path.join(PLOTS_PATH, args.time_stamp + '.pdf')
+    PATH = os.path.join(PLOTS_PATH, f'{deformator.type=}_{args.time_stamp}.pdf')
 
     f = plt.figure()
     plt.title('Losses Plot')
-    plt.plot(losses, label="training loss")
+    plt.plot(train_losses, label="training loss")
+    plt.plot(validation_losses, label="validation loss")
     plt.grid(True)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')

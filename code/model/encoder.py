@@ -78,7 +78,7 @@ class Encoder(nn.Module):
             z = self.mlp_mu(x_t)
             kl = None
 
-        self.save_bdata(b_data)
+        # self.save_bdata(b_data)
 
         return kl, z, b_data
 

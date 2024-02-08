@@ -10,7 +10,7 @@ python VGAErun.py \
     -ae_layers 2 \
     -batch_size 16 \
     -edge_conv True \
-    -epochs 1 \
+    -epochs 35 \
     -hidden_dim 32 \
     -instance_id 1 \
     -latent_space True \
@@ -18,12 +18,12 @@ python VGAErun.py \
     -log_step 2 \
     -lr 1e-4 \
     -latent_dim 128 \
-    -logger_lvl DEBUG \
+    -logger_lvl INFO \
     -loss LMSE \
-    -load_model False \
+    -load_model True \
     -mpl_layers 1 \
     -mpl_ratio 0.8 \
-    -make_gif False \
+    -make_gif True \
     -model_file model.pt \
     -num_blocks 1 \
     -normalize False \
@@ -37,7 +37,7 @@ python VGAErun.py \
     -save_args_dir $prefix/args/$day \
     -save_gif_dir $prefix/gifs/$day \
     -save_mesh_dir $prefix/meshes/$day \
-    -save_model_dir $prefix/model_chkpoints/$day \
+    -save_model_dir $prefix/model_chkpoints/ \
     -save_plot_dir $prefix/plots/$day \
     -shuffle True \
     -save_plot True \

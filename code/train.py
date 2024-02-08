@@ -3,7 +3,7 @@
 """
 import copy
 import os
-
+import json
 import numpy as np
 import torch
 import enlighten
@@ -202,13 +202,13 @@ def save_model(best_model, args):
     torch.save(best_model.state_dict(), model_path)
 
 def save_args(args):
+    # logger.debug(f'{args.__dict__=}')
     if not os.path.isdir(args.save_args_dir):
         os.mkdir(args.save_args_dir)
     args_name = "args_" + args.time_stamp
-    path = os.path.join(args.save_args_dir, args_name + ".txt")
+    path = os.path.join(args.save_args_dir, args_name + ".json")
     with open(path, "w") as f:
-        for key, value in args.__dict__.items():
-            f.write("%s: %s\n" % (key, value))
+        json.dump(args.__dict__, f)
 
 def save_mesh(pred, truth, idx, args):
     if not os.path.isdir(args.save_mesh_dir):

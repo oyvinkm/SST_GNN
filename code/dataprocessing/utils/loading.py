@@ -205,7 +205,7 @@ def split_pairs(data, ratio = .1):
   """Splits list of data pairs into two lists and discards overlapping entries"""
   test_data = []
   rng = np.random.default_rng()
-  choice = rng.choice(len(data), int(ratio * len(data)), replace = False)
+  choice = rng.choice(len(data)-1, int(ratio * len(data)), replace = False)
   for i in choice: test_data.append(data[i]); data[i] = None
   for j in choice: data[min(j+1, len(data))] = None; data[max(j-1, 0)] = None
   train_data = list(filter(lambda x : x is not None, data))

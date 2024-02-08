@@ -23,34 +23,9 @@ from dataprocessing.dataset import MeshDataset, DatasetPairs
 from dataprocessing.utils.loading import save_traj_pairs
 from model.model import MultiScaleAutoEncoder
 from utils.visualization import plot_dual_mesh, make_gif, plot_test_loss, plot_loss
+from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
 from utils.opt import build_optimizer
 from train import test, train
-
-def none_or_str(value):
-    if value.lower() == "none":
-        return None
-    return value
-
-
-def none_or_int(value):
-    if value == "None":
-        return None
-    return int(value)
-
-
-def none_or_float(value):
-    if value == "None":
-        return None
-    return float(value)
-    
-def t_or_f(value):
-    ua = str(value).upper()
-    if 'TRUE'.startswith(ua):
-       return True
-    elif 'FALSE'.startswith(ua):
-       return False
-    else:
-       logger.CRITICAL("boolean argument incorrect")
 
 def apply_transform(args):
     logger.info("Applying Transformation")
@@ -111,14 +86,13 @@ parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
 parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
 parser.add_argument('-train', type=t_or_f, default=True)
-parser.add_argument('-transform', type=t_or_f, default=True)
+parser.add_argument('-transform', type=t_or_f, default=False)
 parser.add_argument('-transform_p', type=float, default=0.1)
 parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
 parser.add_argument('-test_ratio', type=float, default=0.2)
 parser.add_argument('-val_ratio', type=float, default=0.1)
 parser.add_argument('-weight_decay', type=float, default=0.0005)
 args = parser.parse_args()
-
 
 def main():
     # args.transform = 'Attribute'
@@ -129,7 +103,6 @@ def main():
     # torch.manual_seed(5)  # Torch
     # random.seed(5)  # Python
     # np.random.seed(5)  # NumPy
-
     # Set device to cuda if availale
     if torch.cuda.is_available():
         args.device = "cuda"
@@ -172,7 +145,7 @@ def main():
         assert os.path.isfile(model_path), "model file does not exist"
         model.load_state_dict(torch.load(model_path))
         logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
-    
+
     if args.make_gif:
         make_gif(model, dataset[:300], args)
         exit()
@@ -228,7 +201,7 @@ def main():
         pair_list.append((torch.squeeze(z1, dim = 0), torch.squeeze(z2, dim = 0)))
             
         torch.save(pair_list, pair_list_file)
-        # deleting to save momoryh
+        # deleting to save memory
         del pair_list
     
     
