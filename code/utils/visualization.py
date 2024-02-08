@@ -3,18 +3,18 @@ from matplotlib import tri as mtri
 from matplotlib import animation
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+import pandas as pd
+from sklearn.manifold import TSNE
 import os 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from torch_geometric.data import Batch, Data
+from torch_geometric.data import Batch
 import torch
 import copy
-from torch import Tensor
-import torch_geometric
 from torch_geometric.utils import to_networkx
-from torch_geometric.datasets import Planetoid
 import networkx as nx
-from networkx.algorithms import community
 from loguru import logger
+
 
 def save_plots(args, losses, test_losses, velo_val_losses):
     """Saves loss plots at args.postprocess_dir"""
@@ -304,3 +304,29 @@ def plot_test_loss(test_loss, ts, test_label = 'test loss',
         plt.savefig(PATH)
     
     return fig, ax
+
+def visualize_latent_space(latent_vectors, time_stamps, n_components = 2):
+  # Validating input
+  assert latent_vectors.dim() <= 3 and latent_vectors.dim() >=2, f'Latent vector has dim {latent_vectors.dim()}, needs to be on form (no_samples, latent_features, (1))'
+  assert time_stamps.dim() == 1, f'time_stamps has dim {time_stamps.dim()}, need to have shape (no_samples,)'
+  if latent_vectors.dim() == 3 and latent_vectors.shape[-1] == 1:
+    latent_vectors = latent_vectors.squeeze()
+
+  # TSNE settup
+  perplexity = min(latent_vectors.shape[0] - 1, 30)
+  tsne = TSNE(n_components, perplexity=perplexity)
+  projection = tsne.fit_transform(latent_vectors.squeeze())
+  projection_df = pd.DataFrame({'tsne_1': projection[:,0], 'tsne_2': projection[:,1], 'label': time_stamps})
+
+  # Plot tsne
+  fig, ax = plt.subplots(1)
+  sns.scatterplot(x='tsne_1', y='tsne_2', hue = 'label', data=projection_df, palette='crest', ax=ax,s=10)
+  divider = make_axes_locatable(ax)
+  cax = divider.append_axes('right', size='5%', pad=0.05)
+  norm = plt.Normalize(projection_df['label'].min(), projection_df['label'].max())
+  sm = plt.cm.ScalarMappable(cmap="crest", norm=norm)
+  fig.colorbar(sm, cax=cax, orientation='vertical')
+  
+  ax.get_legend().remove()
+  ax.set_aspect('equal')
+  return fig
