@@ -96,7 +96,7 @@ parser.add_argument('-random_search', type=t_or_f, default=False)
 parser.add_argument('-residual', type=t_or_f, default=True)
 parser.add_argument('-save_args_dir', type=str, default='../logs/args/'+day)
 parser.add_argument('-save_accuracy_dir', type=str, default='../logs/accuracies/'+day)
-parser.add_argument('-save_graphstructure_dir', type=str, default='../logs/graph_structure/')
+parser.add_argument('-graph_structure_dir', type=str, default='../logs/graph_structure/')
 parser.add_argument('-save_gif_dir', type=str, default='../logs/gifs/'+day)
 parser.add_argument('-save_loss_over_t_dir', type=str, default='../logs/loss_over_t/'+day)
 parser.add_argument('-save_mesh_dir', type=str, default='../logs/meshes/'+day)
@@ -134,7 +134,7 @@ def main():
     else:
         args.device = "cpu"
     logger.info(f"Device : {args.device}")
-
+    logger.debug(f'SAVE_MODEL : {args.save_model_dir}')
 
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
@@ -148,7 +148,7 @@ def main():
     logger.debug(dataset[0].edge_attr.shape)
     logger.debug(dataset.m_gs[0].shape)
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
-    args.graph_structure_dir = os.path.join(args.save_graphstructure_dir, f'{args.instance_id}')
+    args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
     # this attribute is also used in encoder ^
     # if not os.path.isdir(args.graph_structure_dir):
     #     os.mkdir(args.graph_structure_dir)
@@ -164,15 +164,17 @@ def main():
     model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs, dataset.e_s)
     model = model.to(args.device)
     if args.load_model:
-        model_path = os.path.join(args.save_model_dir , args.model_file)
+        model_path = os.path.join(args.save_model_dir, args.model_file)
         logger.info("Loading model")
-        logger.debug(f"{model_path}")
-        assert os.path.isfile(model_path), "model file does not exist"
+        assert os.path.isfile(model_path), f"can't find model file at: {model_path}"
         model.load_state_dict(torch.load(model_path))
-        logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
+        logger.success(f"Multi Scale Autoencoder loaded from {model_path}")
     
     if args.make_gif:
+        logger.success('Making a gif <3')
+        args.model_file = 'gifff'
         make_gif(model, dataset[:300], args)
+        logger.success('Made a gif <3')
         exit()
 
     # Initialize optimizer and scheduler(?)
