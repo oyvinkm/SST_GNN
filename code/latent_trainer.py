@@ -5,8 +5,33 @@ import torch
 import torch.nn as nn
 from model.utility import ShiftDistribution, make_noise, make_interpolation_chart, fig_to_image
 from model.utility import MeanTracker, DeformatorType
+from matplotlib import pyplot as plt
+from utils.visualization import plot_loss
 from loguru import logger
 
+
+def save_difference_norms(train_set):
+    norms = []
+    for z1, z2 in train_set:
+        res = torch.norm(z2 - z1)
+        norms.append(res.item())
+    logger.debug(f'{res.shape=}')
+    logger.debug(f'{len(norms)=}')
+    logger.debug(f'{norms=}')
+    PLOTS_PATH = os.path.join('..','logs','direction','norms')
+    if not os.path.isdir(PLOTS_PATH):
+        os.mkdir(PLOTS_PATH)
+    PATH = os.path.join(PLOTS_PATH, f'difference_norms.pdf')
+
+    f = plt.figure()
+    plt.title('Difference Norms Plot')
+    plt.plot(norms)#, label="norm of difference between z1 and z2")
+    plt.grid(True)
+    plt.xlabel('t')
+    plt.ylabel('norm of vector from z1 to z2')
+    
+    plt.legend()
+    f.savefig(PATH, bbox_inches='tight')
 
 class Params(object):
     """Sets up parameters for the latenttrainer"""
@@ -91,7 +116,7 @@ class Trainer(object):
         for i, (index, val) in enumerate(zip(target_indices, shifts)):
             # adds the scaled shifts to z_shifts at the indeces given by target_indeces.
             z_shift[i][index] += val
-
+        # z_shift 
         return target_indices, shifts, z_shift
 
     def log_train(self, step, should_print=True, stats=()):
@@ -178,72 +203,88 @@ class Trainer(object):
         print('Step {} accuracy: {:.3}'.format(step, accuracy.item()))
         self.save_models(deformator, shift_predictor, step)
 
-    def train(self, G, deformator, shift_predictor, args, multi_gpu=False):
-        G.to(self.device).eval()
+    def train(self, deformator, train_loader, validation_loader, deformator_args, multi_gpu=False):
+        # G.to(self.device).eval()
         deformator.to(self.device).train()
-        shift_predictor.to(self.device).train()
 
         deformator_opt = torch.optim.Adam(deformator.parameters(), lr=self.p.deformator_lr) \
             if deformator.type not in [DeformatorType.ID, DeformatorType.RANDOM] else None
-        shift_predictor_opt = torch.optim.Adam(
-            shift_predictor.parameters(), lr=self.p.shift_predictor_lr)
 
         avgs = MeanTracker('percent'), MeanTracker('loss'), MeanTracker('direction_loss'),\
                MeanTracker('shift_loss')
         avg_correct_percent, avg_loss, avg_label_loss, avg_shift_loss = avgs
 
-        # A feature they built s.t. they can start their training from an arbitrary step / epoch
-        recovered_step = self.start_from_checkpoint(deformator, shift_predictor)
+        train_losses = []
+        val_losses = []
+        for epoch in range(deformator_args.epochs):
+            # It's approximately 2 seconds for 100 epochs
+            total_loss = 0
+            for idx, batch in enumerate(train_loader):
+                z1, z2 = batch
+                
+                deformator.zero_grad()
 
-        # Added to access b_data
-        args.graph_structure_dir = os.path.join(args.save_graphstructure_dir, f'{args.instance_id}')
+                # Deformation for 'proj'
+                # shift_prediction = deformator(z1).squeeze(dim = 3)
 
-        temp = torch.load(os.path.join(args.graph_structure_dir, 'b_data.pt'))
-        for step in range(recovered_step, self.p.n_steps, 1):
+                # Deformation for 'id'
+                shift_prediction = deformator(z1)
+                z2_prediction = z1 + shift_prediction.squeeze(dim=2)
 
-            G.zero_grad()
-            deformator.zero_grad()
-            shift_predictor.zero_grad()
+                loss = torch.mean(torch.abs(z2_prediction - z2))
+                loss.backward()
+                if deformator_opt is not None:
+                    deformator_opt.step()
 
-            # Creates random latent_vector of size Batch X Dim
-            z = make_noise(self.p.batch_size, G.dim_z, self.p.truncation).to(self.device)
+                avg_loss.add(loss.item())
+                total_loss += loss.item()
+            total_loss /= len(train_loader)
+            train_losses.append(total_loss)
+            val_loss = self.validate(deformator, validation_loader, epoch)
+            val_losses.append(val_loss)
+        save_plots(deformator, train_losses, val_losses, deformator_args)
+    
+    @torch.no_grad()
+    def validate(self, deformator, validation_loader, epoch):
+        total_loss = 0
+        deformator.eval()
+        for idx, batch in enumerate(validation_loader):
+            z1, z2 = batch
+
+            # Deformation for 'proj'
+            # shift_prediction = deformator(z1).squeeze(dim = 3)
+
+            # Deformation for 'id'
+            shift_prediction = deformator(z1)
+
+            z2_prediction = z1 + shift_prediction
+
+            shift_loss = torch.mean(torch.abs(z2_prediction - z2))
+
+            total_loss += shift_loss.item()
+        return total_loss / len(validation_loader)
 
 
-            target_indices, shifts, basis_shift = self.make_shifts(deformator.input_dim)
+def save_plots(deformator, train_losses, validation_losses, deformator_args):
+    """Saves loss plots for deformator at ../logs/direction/plots
+    It includes train_losses and validation losses
+    """
 
-            # Deformation
-            shift = deformator(basis_shift)
-            b_data = temp.clone()
-            graphs = G(b_data, z)
+    PLOTS_PATH = os.path.join('..','logs','direction','plots')
+    if not os.path.isdir(PLOTS_PATH):
+        os.mkdir(PLOTS_PATH)
+    PATH = os.path.join(PLOTS_PATH, f'{deformator.type=}_{args.time_stamp}.pdf')
 
-            b_data = temp.clone()
-            graphs_shifted = G.gen_shifted(b_data, z, shift)
+    f = plt.figure()
+    plt.title('Losses Plot')
+    plt.plot(train_losses, label="training loss")
+    plt.plot(validation_losses, label="validation loss")
+    plt.grid(True)
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
 
-            # Probably not needed
-            logits, shift_prediction = shift_predictor(graphs.x, graphs_shifted.x, self.p.batch_size)
-            logit_loss = self.p.label_weight * self.cross_entropy(logits, target_indices)
-            shift_loss = self.p.shift_weight * torch.mean(torch.abs(shift_prediction - shifts))
-            
-            # total loss
-            loss = logit_loss + shift_loss
-            loss.backward()
-
-            if deformator_opt is not None:
-                deformator_opt.step()
-            shift_predictor_opt.step()
-
-            # update statistics trackers
-            avg_correct_percent.add(torch.mean(
-                    (torch.argmax(logits, dim=1) == target_indices).to(torch.float32)).detach())
-            avg_loss.add(loss.item())
-            avg_label_loss.add(logit_loss.item())
-            avg_shift_loss.add(shift_loss)
-
-            self.log(G, deformator, shift_predictor, step, avgs)
-        self.log_final(G, deformator, shift_predictor, step, avgs)
-
-    # Instead of all this we should probably have Øyvins pairs load both latent vectors and give one to the deformator.
-    # It should return the second.
+    plt.legend()
+    f.savefig(PATH, bbox_inches='tight')
 
 @torch.no_grad()
 def validate_classifier(G, deformator, shift_predictor, params_dict=None, trainer=None, device='cpu'):
