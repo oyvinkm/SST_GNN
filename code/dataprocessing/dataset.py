@@ -91,7 +91,7 @@ class MeshDataset(Dataset):
         self.e_s[k][str(traj)] = torch.tensor(e_s[k])
 
 
-""" class DatasetPairs(Dataset):
+class DatasetPairs(Dataset):
   def __init__(self, args):
     self.data_dir = args.data_dir
     self.instance_id = args.instance_id
@@ -157,4 +157,4 @@ class MeshDataset(Dataset):
 
 
 
-   """
+  
