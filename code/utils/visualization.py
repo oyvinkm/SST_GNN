@@ -1,18 +1,20 @@
 import os
-from matplotlib import tri as mtri
-from matplotlib import animation
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import pandas as pd
-from sklearn.manifold import TSNE
 import os 
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from torch_geometric.data import Batch
 import torch
 import copy
-from torch_geometric.utils import to_networkx
 import networkx as nx
+import umap.umap_ as umap
+
+from sklearn.manifold import TSNE
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch_geometric.data import Batch
+from torch_geometric.utils import to_networkx
+from matplotlib import tri as mtri
+from matplotlib import animation
 from loguru import logger
 
 
@@ -305,22 +307,31 @@ def plot_test_loss(test_loss, ts, test_label = 'test loss',
     
     return fig, ax
 
-def visualize_latent_space(latent_vectors, time_stamps, n_components = 2):
+def visualize_latent_space(latent_time, n_components = 2, perplexity=30., method = 'tsne'):
   # Validating input
-  assert latent_vectors.dim() <= 3 and latent_vectors.dim() >=2, f'Latent vector has dim {latent_vectors.dim()}, needs to be on form (no_samples, latent_features, (1))'
-  assert time_stamps.dim() == 1, f'time_stamps has dim {time_stamps.dim()}, need to have shape (no_samples,)'
-  if latent_vectors.dim() == 3 and latent_vectors.shape[-1] == 1:
+  # This might change depending on how the data is formatted.
+  # latent_time = torch.load('latent_space.pt', map_location='cpu')
+  unzipped = [list(t) for t in zip(*latent_time)]
+  latent_vectors = np.stack([x.squeeze().detach().numpy() for x in unzipped[0]])
+  time_stamps = np.array(unzipped[1])
+  assert len(latent_vectors.shape) <= 3 and len(latent_vectors.shape) >=2, f'Latent vector has dim {len((latent_vectors).shape)}, needs to be on form (no_samples, latent_features, (1))'
+  assert len(time_stamps.shape) == 1, f'time_stamps has dim {len(time_stamps.shape)}, need to have shape (no_samples,)'
+  if len(latent_vectors.shape) == 3 and latent_vectors.shape[-1] == 1:
     latent_vectors = latent_vectors.squeeze()
 
   # TSNE settup
-  perplexity = min(latent_vectors.shape[0] - 1, 30)
-  tsne = TSNE(n_components, perplexity=perplexity)
-  projection = tsne.fit_transform(latent_vectors.squeeze())
-  projection_df = pd.DataFrame({'tsne_1': projection[:,0], 'tsne_2': projection[:,1], 'label': time_stamps})
+  perplexity = min(latent_vectors.shape[0] - 1, perplexity)
+  if method == 'umap':
+    reducer = umap.UMAP()
+  else:    
+    reducer = TSNE(n_components, perplexity=perplexity)
+  projection = reducer.fit_transform(latent_vectors.squeeze())
+  projection_df = pd.DataFrame({'x': projection[:,0], 'y': projection[:,1], 'label': time_stamps})
 
   # Plot tsne
+  plt.figure(figsize=(12,8))
   fig, ax = plt.subplots(1)
-  sns.scatterplot(x='tsne_1', y='tsne_2', hue = 'label', data=projection_df, palette='crest', ax=ax,s=10)
+  sns.scatterplot(x='x', y='y', hue = 'label', data=projection_df, palette='crest', ax=ax,s=10)
   divider = make_axes_locatable(ax)
   cax = divider.append_axes('right', size='5%', pad=0.05)
   norm = plt.Normalize(projection_df['label'].min(), projection_df['label'].max())

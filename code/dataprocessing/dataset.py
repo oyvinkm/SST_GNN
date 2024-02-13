@@ -1,44 +1,59 @@
 #!/usr/bin/env python3
 import os
 import pickle
-from typing import Callable, Optional
+import re
 import torch
+
 from torch_geometric.data import Dataset
 from loguru import logger
-from dataprocessing.utils.normalization import get_stats
 from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
 
 
 class MeshDataset(Dataset):
-  def __init__(self, args):
+  def __init__(self, args, mode):
     self.data_dir = args.data_dir
-    self.instance_id = args.instance_id
-    self.normalize = args.normalize
     self.layer_num = args.ae_layers
+    self.mode = mode
+    if mode not in ['train', 'test', 'val']:
+       self.mode = 'train'
     # gets data file
-    self.data_file = os.path.join(self.data_dir, f'trajectories/trajectory_{str(self.instance_id)}.pt')
+    self.data_file = os.path.join(self.data_dir, f'{self.mode}')
     self.mm_dir = os.path.join(self.data_dir, 'mm_files/')
     if not os.path.exists(self.mm_dir):
         os.mkdir(self.mm_dir)
     # directory for storing processed datasets
-    #self.mm_dir = os.path.join(self.data_dir, 'mm_files/')
     self.last_idx = 0
     # number of nodes
     self.n = None
-    
-    self.traj_data = torch.load(self.data_file)
-    
     # For normalization, not implemented atm
-    self.stats_list = get_stats(self.traj_data)
-    self._cal_multi_mesh()
+    
+    self.max_latent_nodes = 0
+    self.trajectories = set(map(lambda str : re.search('\d+', str).group(), self.processed_file_names))
+    self.m_ids = [{} for _ in range(self.layer_num)]
+    self.m_gs = [{} for _ in range(self.layer_num + 1)]
+    self.e_s = [{} for _ in range(self.layer_num )] 
+    self._get_bi_stride()
     super().__init__(self.data_dir)
+  
+  def _get_bi_stride(self):
+    for t in self.trajectories:
+      f = next(filter(lambda str : str.startswith(t), self.processed_file_names))
+      g = torch.load(os.path.join(self.data_file, f))
+      self._cal_multi_mesh(t, g)
+
+  @property
+  def processed_file_names(self):
+    return os.listdir(self.data_file)
 
   def len(self):
-     return len(self.traj_data)  
+     return len(self.processed_file_names)  
   
   def get(self, idx):
-    return self.traj_data[idx]
-    
+    file = list(filter(lambda str : str.endswith(f'data_{idx}.pt'), self.processed_file_names))[0]
+    return torch.load(os.path.join(self.data_file, file)) # (G, m_ids, m_gs, e_s) -> max m_ids
+  
+  def _get_pool(self):
+     return self.m_ids, self.m_gs, self.e_s
 
   def __next__(self):
     if self.last_idx == self.len()-1:
@@ -50,13 +65,12 @@ class MeshDataset(Dataset):
   def __iter__(self):
     return self
 
-  def _cal_multi_mesh(self):
-      mmfile = os.path.join(self.mm_dir, str(self.instance_id) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
+  def _cal_multi_mesh(self, traj, g):
+      mmfile = os.path.join(self.mm_dir, str(traj) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
       mmexist = os.path.isfile(mmfile)
       if not mmexist:
-          edge_i = self.traj_data[0].edge_index
-          n = self.traj_data[0].x.shape[0]
-          logger.debug(f'n : {n}')
+          edge_i = g.edge_index
+          n = g.x.shape[0]
           m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
                                                     self.layer_num,
                                                     n=n,
@@ -66,12 +80,18 @@ class MeshDataset(Dataset):
       else:
           m_mesh = pickle.load(open(mmfile, 'rb'))
           m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
-      self.m_ids = m_ids
-      self.m_gs = m_gs
-      self.e_s = e_s
+      if len(m_ids[-1]) > self.max_latent_nodes:
+        self.max_latent_nodes = len(m_ids[-1])
+
+      for i in range(len(m_ids)):
+        self.m_ids[i][str(traj)] = torch.tensor(m_ids[i])
+      for j in range(len(m_gs)):
+        self.m_gs[j][str(traj)] = m_gs[j]
+      for k in range(len(e_s)):
+        self.e_s[k][str(traj)] = torch.tensor(e_s[k])
 
 
-class DatasetPairs(Dataset):
+""" class DatasetPairs(Dataset):
   def __init__(self, args):
     self.data_dir = args.data_dir
     self.instance_id = args.instance_id
@@ -114,12 +134,12 @@ class DatasetPairs(Dataset):
   def __iter__(self):
     return self
 
-  def _cal_multi_mesh(self):
-      mmfile = os.path.join(self.mm_dir, str(self.instance_id) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
+  def _cal_multi_mesh(self, traj, g):
+      mmfile = os.path.join(self.mm_dir, str(traj) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
       mmexist = os.path.isfile(mmfile)
       if not mmexist:
-          edge_i = self.traj_data[0][0].edge_index
-          n = self.traj_data[0][0].x.shape[0][0]
+          edge_i = g.edge_index
+          n = g.x.shape[0][0]
           m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
                                                     self.layer_num,
                                                     n=n,
@@ -129,10 +149,12 @@ class DatasetPairs(Dataset):
       else:
           m_mesh = pickle.load(open(mmfile, 'rb'))
           m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
+
+     
       self.m_ids = m_ids
       self.m_gs = m_gs
       self.e_s = e_s
 
 
 
-  
+   """
