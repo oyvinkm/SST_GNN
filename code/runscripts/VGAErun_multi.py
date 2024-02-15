@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 import warnings
+import copy
 from datetime import datetime
 import torch
 from loguru import logger
@@ -40,7 +41,7 @@ parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-batch_size', type=int, default=16)
 parser.add_argument('-data_dir', type=str, default='../data/cylinder_flow/trajectories_1768')
 parser.add_argument('-epochs', type=int, default=1)
-parser.add_argument('-edge_conv', type=t_or_f, default=False)
+parser.add_argument('-edge_conv', type=t_or_f, default=True)
 parser.add_argument('-hidden_dim', type=int, default=32)
 parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-latent_space', type=t_or_f, default=True)
@@ -49,11 +50,11 @@ parser.add_argument('-loss', type=none_or_str, default='LMSE')
 parser.add_argument('-load_model', type=t_or_f, default=False)
 parser.add_argument('-loss_step', type=int, default=10)
 parser.add_argument('-log_step', type=int, default=10)
-parser.add_argument('-latent_dim', type=int, default=128)
-parser.add_argument('-lr', type=float, default=1e-4)
+parser.add_argument('-latent_dim', type=int, default=64)
+parser.add_argument('-lr', type=float, default=1e-3)
 parser.add_argument('-make_gif', type=t_or_f, default=False)
 parser.add_argument('-max_latent_nodes', type=int, default = 1768)
-parser.add_argument('-model_file', type=str, default="sst_gvae.pt")
+parser.add_argument('-model_file', type=str, default="model.pt")
 parser.add_argument('-mpl_ratio', type=float, default=0.8)
 parser.add_argument('-mpl_layers', type=int, default=1)
 parser.add_argument('-normalize', type=t_or_f, default=False)
@@ -77,10 +78,11 @@ parser.add_argument('-save_visualize_dir', type=str, default='../logs/visualizat
 parser.add_argument('-shuffle', type=t_or_f, default=True)
 parser.add_argument('-save_plot', type=t_or_f, default=True)
 parser.add_argument('-save_model', type=t_or_f, default=True)
+parser.add_argument('-save_latent', type=t_or_f, default=False)
 parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
-parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
+parser.add_argument('-save_plot_dir', type=str, default='../logs/plots/'+day)
 parser.add_argument('-train', type=t_or_f, default=True)
 parser.add_argument('-transform', type=t_or_f, default=False)
 parser.add_argument('-transform_p', type=float, default=0.3)
@@ -118,7 +120,7 @@ def main():
         train_data[0].x.shape[0]
     )
     m_ids, m_gs, e_s, args.max_latent_nodes = merge_dataset_stats(train_data, test_data, val_data)
-    
+   
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
     # this attribute is also used in encoder ^
@@ -145,8 +147,8 @@ def main():
 
     if args.make_gif:
         logger.success('Making a gif <3')
-        args.model_file = 'gifff'
-        make_gif(model, train_data[:300], args)
+        args.model_file = 'test_full_traj'
+        make_gif(model, gif_data, args)
         logger.success('Made a gif <3')
         exit()
 
@@ -173,7 +175,7 @@ def main():
     )
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
-
+    logger.success(f'All data loaded')
     # TRAINING
     train_losses, val_losses, model = train(
         model=model,
@@ -203,7 +205,6 @@ def main():
             torch.save(pair_list, pair_list_file)
             # deleting to save memory
             del pair_list
-    
     
     if args.save_plot:
         loss_name = "loss_" + args.time_stamp

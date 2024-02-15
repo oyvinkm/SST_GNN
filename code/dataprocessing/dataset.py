@@ -69,6 +69,7 @@ class MeshDataset(Dataset):
       mmfile = os.path.join(self.mm_dir, str(traj) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
       mmexist = os.path.isfile(mmfile)
       if not mmexist:
+          logger.info(f'Calculating multi mesh for trajectory {traj}')
           edge_i = g.edge_index
           n = g.x.shape[0]
           m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
@@ -78,6 +79,7 @@ class MeshDataset(Dataset):
           m_mesh = {'m_gs': m_gs, 'm_ids': m_ids, 'e_s' : e_s}
           pickle.dump(m_mesh, open(mmfile, 'wb'))
       else:
+          logger.info(f'Loaded multi mesh for trajectory {traj}')
           m_mesh = pickle.load(open(mmfile, 'rb'))
           m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
       if len(m_ids[-1]) > self.max_latent_nodes:

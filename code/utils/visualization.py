@@ -119,27 +119,30 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
     if (save_anim):
         gs_anim = animation.FuncAnimation(fig, animate, frames=num_frames, interval=1000)
         writergif = animation.PillowWriter(fps=10) 
-        anim_path = os.path.join(path, '{}_anim.gif'.format(name))
+        anim_path = os.path.join(path, '{}.gif'.format(name))
         gs_anim.save( anim_path, writer=writergif)
         plt.show(block=True)
     else:
         pass
 
+
 def make_gif(model, dataset, args):
     assert args.load_model, "you cannot make a gif if you're not going to load a model"
-    PRED = copy.deepcopy(dataset)
+    PRED = []
     GT = copy.deepcopy(dataset)
-    DIFF = copy.deepcopy(dataset)
-    for pred_data, gt_data, diff_data in zip(PRED, GT, DIFF):
+    DIFF = []
+
+    for data in dataset:
         with torch.no_grad():
+            pred_data = data.clone()
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
-            pred_data.x = pred.x
-            diff_data.x = pred_data.x - gt_data.x.to(args.device)
+            PRED.append(pred)
+            DIFF.append(data)
+            DIFF[-1].x = pred.x.to(args.device) - data.x.to(args.device)
     logger.info("processing done...")
-    gif_name = args.model_file + "anim.gif"
+    gif_name = args.model_file
     make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
     logger.success("gif complete...")
-
 
 def draw_graph(g, save = False, args = None):
   """Draws the graph given"""

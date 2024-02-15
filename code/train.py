@@ -37,6 +37,7 @@ def train(model, train_loader, val_loader, optimizer, args):
     if args.progress_bar:
         manager = enlighten.get_manager()
         epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
+    logger.success(f'Beginning training for {args.epochs} epochs...')
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
