@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+from torch_geometric.nn.norm import BatchNorm
 from torch_geometric.data import Batch
 from loguru import logger
 import os
@@ -131,6 +132,8 @@ class Res_down(nn.Module):
         self.act1 = nn.ReLU()
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args) # skip
         self.act2 = nn.ReLU()
+        self.bn_nodes = BatchNorm(in_channels = channel_out)
+        self.bn_edges = BatchNorm(in_channels = channel_out)
 
     def _bi_pool_batch(self, b_data):
         b_lst = Batch.to_data_list(b_data)
@@ -151,5 +154,8 @@ class Res_down(nn.Module):
         b_data = self.mpl1(b_data)
         b_data = self._bi_pool_batch(b_data)
         b_data = self.mpl2(b_data)
-        b_data.x = self.act1(b_data.x + b_skip.x)
+        b_data.x = self.bn_nodes(b_data.x + b_skip.x)
+        b_data.edge_attr = self.bn_edges(b_data.edge_attr + b_skip.edge_attr)
+        b_data.x = self.act1(b_data.x)
+        b_data.edge_attr = self.act2(b_data.edge_attr)
         return b_data
