@@ -19,15 +19,19 @@ class Decoder(nn.Module):
         self.latent_dim = args.latent_dim
         self.max_hidden_dim = args.hidden_dim * 2 ** args.ae_layers
         # Pre computed node mask and edge_mask from bi-stride pooling
-        self.m_ids, self.m_gs, self.e_x = m_ids, m_gs, e_s
+        self.m_ids, self.m_gs, self.e_s = m_ids, m_gs, e_s
         self.ae_layers = args.ae_layers
         self.n = args.n_nodes
         self.layers = nn.ModuleList()
         self.out_feature_dim = args.out_feature_dim
         self.latent_vec_dim = args.max_latent_nodes
+        self.latent_edge_dim = args.max_latent_edges
         self.mpl_bottom = MessagePassingLayer(hidden_dim = args.latent_dim, 
                                               latent_dim=self.max_hidden_dim, 
                                               args=args)
+        self.linear_up_mlp_edge = Sequential(Linear(1, 500),
+                                    LeakyReLU(),
+                                    Linear(500, self.latent_edge_dim))
         self.linear_up_mlp = Sequential(Linear(1, 64),
                                     LeakyReLU(),
                                     Linear(64, self.latent_vec_dim))
@@ -61,16 +65,20 @@ class Decoder(nn.Module):
         )
 
     def from_latent_vec(self, z_x):
-        b_data = self.linear_up_mlp(z_x)
-        b_data = self.batch_to_sparse(b_data)
-        return b_data
+        x = self.linear_up_mlp(z_x)
+        e = self.linear_up_mlp_edge(z_x)
+        x = self.batch_to_sparse(x)
+        e = self.batch_to_sparse(e)
+        return x, e
     def trim_nodes(self, b_data):
         b_lst = Batch.to_data_list(b_data)
         data_lst = []
         for idx, data in enumerate(b_lst):
-            mask = self.m_ids[-1][data.trajectory]
-            data.x = data.x[:len(mask)]
-            data.weights = data.weights[:len(mask)]
+            node_mask = self.m_ids[-1][data.trajectory]
+            edge_mask = self.m_gs[-1][data.trajectory].shape[-1]
+            data.x = data.x[:len(node_mask)]
+            data.weights = data.weights[:len(node_mask)]
+            data.edge_attr = data.edge_attr[:edge_mask]
             data_lst.append(data)
         return Batch.from_data_list(data_lst)
     
@@ -80,10 +88,14 @@ class Decoder(nn.Module):
         return z
 
     def forward(self, b_data, z):
+        # Set edge weights to 1
+        b_data.weights = torch.ones_like(b_data.weights)
         if self.args.latent_space:
-            z_x = self.from_latent_vec(z)
+            z_x, z_e = self.from_latent_vec(z)
             b_data.x = z_x
+            b_data.edge_attr = z_e
         b_data = self.trim_nodes(b_data)
+        logger.debug(f'{b_data=}')
         b_data = self.mpl_bottom(b_data)
         for i in range(self.ae_layers):
            b_data = self.layers[i](b_data)
