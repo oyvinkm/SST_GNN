@@ -28,6 +28,7 @@ class MeshDataset(Dataset):
     # For normalization, not implemented atm
     
     self.max_latent_nodes = 0
+    self.max_latent_edges = 0
     self.trajectories = set(map(lambda str : re.search('\d+', str).group(), self.processed_file_names))
     self.m_ids = [{} for _ in range(self.layer_num)]
     self.m_gs = [{} for _ in range(self.layer_num + 1)]
@@ -84,6 +85,8 @@ class MeshDataset(Dataset):
           m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
       if len(m_ids[-1]) > self.max_latent_nodes:
         self.max_latent_nodes = len(m_ids[-1])
+      if m_gs[-1].shape[-1] > self.max_latent_edges:
+         self.max_latent_edges = m_gs[-1].shape[-1]
 
       for i in range(len(m_ids)):
         self.m_ids[i][str(traj)] = torch.tensor(m_ids[i])
