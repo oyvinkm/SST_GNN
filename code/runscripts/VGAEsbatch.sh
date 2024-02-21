@@ -9,6 +9,9 @@
 #SBATCH --time=1:00:00
 
 #your script, in this case: write the hostname and the ids of the chosen gpus.
+echo ""
+echo "========= RUNNING LATENT EDGE ATTRIBUTES ========="
+echo ""
 echo $CUDA_VISIBLE_DEVICES
 ./VGAErun.sh
 # python run.py

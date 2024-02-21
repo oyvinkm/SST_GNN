@@ -25,7 +25,7 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList()
         self.out_feature_dim = args.out_feature_dim
         self.latent_vec_dim = args.max_latent_nodes
-        self.latent_edge_dim = args.max_latent_edges
+        #self.latent_edge_dim = args.max_latent_edges
         self.mpl_bottom = MessagePassingLayer(hidden_dim = args.latent_dim, 
                                               latent_dim=self.max_hidden_dim, 
                                               args=args)

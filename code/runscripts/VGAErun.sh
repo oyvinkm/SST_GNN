@@ -7,7 +7,7 @@ day="$(date +"%d-%m-%y")"
 prefix="../logs"
 export TF_ENABLE_ONEDNN_OPTS=0
 python VGAErun.py \
-    -epochs 7 \
+    -epochs 1 \
     -ae_layers 2 \
     -hidden_dim 64 \
     -batch_size 8 \

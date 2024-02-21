@@ -171,10 +171,10 @@ def main():
     )
     # Create Dataloaders for train, test and validation
     train_loader = DataLoader(
-        train_data, batch_size=args.batch_size, shuffle=args.shuffle
+        train_data[:10], batch_size=args.batch_size, shuffle=args.shuffle
     )
-    val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
-    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+    val_loader = DataLoader(val_data[:10], batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_data[:10], batch_size=1, shuffle=False)
     logger.success(f'All data loaded')
     # TRAINING
     train_losses, val_losses, model = train(
@@ -184,27 +184,27 @@ def main():
         optimizer=optimizer,
         args=args,
     )
-    if args.save_latent:
-        pairs = 'data/cylinder_flow/pairs'
-        save_traj_pairs(args.instance_id)
-        dataset_pairs = DatasetPairs(args = args)
-        encoder = model.encoder.to(args.device)
-        encoder_loader = DataLoader(dataset_pairs, batch_size = 1)
-        latent_space_path = os.path.join('..','data','latent_space')
-        pair_list = []
-        pair_list_file = os.path.join(f'{latent_space_path}', f'encoded_dataset_pairs.pt')
-        for idx, (graph1, graph2) in enumerate(encoder_loader):
-            logger.debug(idx)
-            _, z1, _ = encoder(graph1.to(args.device))
-            _, z2, _ = encoder(graph2.to(args.device))
-            if os.path.isfile(pair_list_file):
-                pair_list = torch.load(pair_list_file)
+    # if args.save_latent:
+    #     pairs = 'data/cylinder_flow/pairs'
+    #     save_traj_pairs(args.instance_id)
+    #     dataset_pairs = DatasetPairs(args = args)
+    #     encoder = model.encoder.to(args.device)
+    #     encoder_loader = DataLoader(dataset_pairs, batch_size = 1)
+    #     latent_space_path = os.path.join('..','data','latent_space')
+    #     pair_list = []
+    #     pair_list_file = os.path.join(f'{latent_space_path}', f'encoded_dataset_pairs.pt')
+    #     for idx, (graph1, graph2) in enumerate(encoder_loader):
+    #         logger.debug(idx)
+    #         _, z1, _ = encoder(graph1.to(args.device))
+    #         _, z2, _ = encoder(graph2.to(args.device))
+    #         if os.path.isfile(pair_list_file):
+    #             pair_list = torch.load(pair_list_file)
             
-            pair_list.append((torch.squeeze(z1, dim = 0), torch.squeeze(z2, dim = 0)))
+    #         pair_list.append((torch.squeeze(z1, dim = 0), torch.squeeze(z2, dim = 0)))
                 
-            torch.save(pair_list, pair_list_file)
-            # deleting to save memory
-            del pair_list
+    #         torch.save(pair_list, pair_list_file)
+    #         # deleting to save memory
+    #         del pair_list
     
     if args.save_plot:
         loss_name = "loss_" + args.time_stamp

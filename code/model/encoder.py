@@ -27,8 +27,8 @@ class Encoder(nn.Module):
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
         self.latent_vec_dim = args.max_latent_nodes
-        self.latent_edge_dim = args.max_latent_edges
-        self.zip_dim = args.zip_dim
+        #self.latent_edge_dim = args.max_latent_edges
+        #self.zip_dim = args.zip_dim
         self.b = args.batch_size
         self.layers = nn.ModuleList()
         self.pad = Unpool()
@@ -119,7 +119,7 @@ class Encoder(nn.Module):
         for idx, data in enumerate(b_lst):
             data.x = self.pad(data.x, self.latent_vec_dim, np.arange(0, data.x.shape[0]))
             data.weights = self.pad(data.weights, self.latent_vec_dim, np.arange(0, data.weights.shape[0]))
-            data.edge_attr = self.pad(data.edge_attr, self.latent_edge_dim, np.arange(0, data.edge_attr.shape[0]))
+            #data.edge_attr = self.pad(data.edge_attr, self.latent_edge_dim, np.arange(0, data.edge_attr.shape[0]))
             data_lst.append(data)
         return Batch.from_data_list(data_lst).to(self.args.device)
     
