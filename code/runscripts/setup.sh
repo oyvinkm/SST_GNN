@@ -10,7 +10,7 @@ python run.py \
     -epochs 1 \
     -ae_layers 2 \
     -hidden_dim 64 \
-    -batch_size 8 \
+    -batch_size 4 \
     -mpl_layers 2 \
     -loss_step 1 \
     -log_step 5 \
