@@ -2,6 +2,9 @@ import numpy as np
 import scipy
 import types
 import torch
+
+from matplotlib import pyplot as plt
+
 from torch import nn
 from functools import wraps
 from loguru import logger
@@ -406,7 +409,6 @@ class ProcessorLayer(MessagePassing):
         edge_index = b_data.edge_index
         edge_attr = b_data.edge_attr
         arguments = {'dim_size' : (x.size(0), self.in_channels + self.out_channels)}
-
         out, updated_edges = self.propagate(edge_index = edge_index, 
                                             x = x, 
                                             edge_attr = edge_attr, 
@@ -468,26 +470,6 @@ from enum import Enum
 import os
 import json
 
-def torch_log2(x):
-    return torch.log(x) / np.log(2.0)
-
-
-def torch_pade13(A):
-    b = torch.tensor([64764752532480000., 32382376266240000., 7771770303897600.,
-                      1187353796428800., 129060195264000., 10559470521600.,
-                      670442572800., 33522128640., 1323241920., 40840800.,
-                      960960., 16380., 182., 1.], dtype=A.dtype, device=A.device)
-
-    ident = torch.eye(A.shape[1], dtype=A.dtype).to(A.device)
-    A2 = torch.matmul(A, A)
-    A4 = torch.matmul(A2, A2)
-    A6 = torch.matmul(A4, A2)
-    U = torch.matmul(A,
-                     torch.matmul(A6, b[13] * A6 + b[11] * A4 + b[9] * A2) + b[7] * A6 + b[5] * A4 +
-                     b[3] * A2 + b[1] * ident)
-    V = torch.matmul(A6, b[12] * A6 + b[10] * A4 + b[8] * A2) + b[6] * A6 + b[4] * A4 + b[2] * A2 +\
-        b[0] * ident
-    return U, V
 
 def vgae_with_shift(vgae_factory):
     """ 
@@ -556,7 +538,7 @@ def torch_expm(A):
     U, V = torch_pade13(A_scaled)
     P = U + V
     Q = -U + V
-    R = torch.linalg.solve(P, Q)
+    R, _ = torch.solve(P, Q)
 
     # Unsquaring step
     res = [R]

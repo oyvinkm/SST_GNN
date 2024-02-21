@@ -33,7 +33,8 @@ def train(model, train_loader, val_loader, optimizer, args):
     val_losses = []
     best_val_loss = np.inf
     best_model = None
-    beta = 0.01
+    beta = 1e-3
+    alpha = .5
     if args.progress_bar:
         manager = enlighten.get_manager()
         epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
@@ -53,14 +54,15 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch = batch.to(args.device)
             batch.x = F.normalize(batch.x)
             batch.edge_attr = F.normalize(batch.edge_attr)
-            logger.debug(f'{batch=}')
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
             optimizer.zero_grad()  # zero gradients each time
             logger.debug(f'{b_data=}')
-            pred, kl = model(b_data)
-            rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
-            loss = beta*kl + rec_loss
+            pred, (kl_nodes, kl_edges) = model(b_data)
+            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+            rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+            # Loss KL Loss Node + alpha(KL Loss Edge)
+            loss = (beta*kl_nodes + rec_loss_node) + alpha*(beta*kl_edges + rec_loss_edge)
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -112,7 +114,9 @@ def validate(model, val_loader, criterion, epoch, args):
         b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        loss = criterion(pred.x[:,:2], b_data.x[:,:2])
+        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+        rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+        loss = rec_loss_node + 0.5*rec_loss_edge
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
@@ -148,7 +152,9 @@ def test(model, test_loader, args):
         pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
-        loss = criterion(pred.x[:,:2], batch.x[:,:2])
+        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+        rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+        loss = rec_loss_node + 0.5*rec_loss_edge
         total_loss += loss.item()
         logger.error(f'{pred.x.shape=}')
         logger.error(f'{batch.x.shape=}')

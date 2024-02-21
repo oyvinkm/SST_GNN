@@ -53,7 +53,6 @@ class LatentDeformator(nn.Module):
         if self.type == DeformatorType.ID:
             return input
 
-        # sets the shape of input to be [x where input_dim*x = len of the flat array, input_dim]
         input = input.view([-1, self.input_dim])
         if self.type == DeformatorType.FC:
             x1 = self.fc1(input)
