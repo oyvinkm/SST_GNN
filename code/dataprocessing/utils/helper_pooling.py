@@ -3,6 +3,7 @@ import torch
 import scipy
 import pickle
 import os
+from torch_geometric.utils import coalesce
 
 _INF = _INF = 1 + 1e10
 def _BFS_dist(adj_list, n_nodes, seed, mask=None):
@@ -215,20 +216,22 @@ def generate_multi_layer_stride(flat_edge, num_l, n, pos_mesh = None):
 
     return m_gs, m_ids, e_s
 
-# Used in dataset class
-""" def _cal_multi_mesh(fields, cells, args):
-    mm_dir = os.path.join(args.data_dir, '/mm_files/')
-    mmfile = os.path.join(mm_dir, str(args.instance_id) + '_mmesh_layer_' + str(args.layer_num) + '.dat')
-    mmexist = os.path.isfile(mmfile)
-    if not mmexist:
-        edge_i = triangles_to_edges(cells)
-        m_gs, m_ids = generate_multi_layer_stride(edge_i,
-                                                    args.layer_num,
-                                                    n=fields['mesh_pos'].shape[-2],
-                                                    pos_mesh=fields["mesh_pos"][0].clone().detach().numpy())
-        m_mesh = {'m_gs': m_gs, 'm_ids': m_ids}
-        pickle.dump(m_mesh, open(mmfile, 'wb'))
-    else:
-        m_mesh = pickle.load(open(mmfile, 'rb'))
-        m_gs, m_ids = m_mesh['m_gs'], m_mesh['m_ids']
-    return m_gs, m_ids """
+
+def pool_edge_attr(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
+    r"""Pools the edges of a graph to a new set of edges using the idxHR_to_idxLR mapping.
+
+    Args:
+        idxHR_to_idxLR (torch.Tensor): A mapping from the old node (or higher resolution) indices to the new (or lower resolution) node indices.
+        edge_index (torch.Tensor): The old edge indices.
+        edge_attr (torch.Tensor): The old edge attributes.
+        aggr (str, optional): The aggregation method. Can be "mean" or "sum". Defaults to "mean".
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: The new edge indices and attributes.
+    """
+    num_nodes = len(m_id)# number of nodes in the lower resolution graph
+    if not torch.is_tensor(edge_index):
+        edge_index = torch.tensor(edge_index)
+    if edge_index.numel() > 0:
+        edge_index, edge_attr = coalesce(edge_index, edge_attr, num_nodes, reduce=aggr) # aggregate edges
+    return edge_attr

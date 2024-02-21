@@ -57,6 +57,7 @@ parser.add_argument('-log_step', type=int, default=10)
 parser.add_argument('-latent_dim', type=int, default=128)
 parser.add_argument('-lr', type=float, default=1e-4)
 parser.add_argument('-make_gif', type=t_or_f, default=False)
+parser.add_argument('-max_latent_nodes', type=int, default = 1768)
 parser.add_argument('-model_file', type=str, default="sst_gvae.pt")
 parser.add_argument('-mpl_ratio', type=float, default=0.8)
 parser.add_argument('-mpl_layers', type=int, default=1)
@@ -136,6 +137,7 @@ def main():
     # Initialize Model
     if not args.latent_space:
         logger.warning("Model is not going into latent_space")
+    args.max_latent_nodes = dataset.max_latent_nodes
     model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs, dataset.e_s)
     model = model.to(args.device)
     if args.load_model:

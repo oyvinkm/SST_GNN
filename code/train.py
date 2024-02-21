@@ -226,6 +226,7 @@ def save_mesh(pred, truth, idx, args):
     plt.close()
     logger.info(f'Mesh saved at {path}')
     
+# TODO: Write to take b_data
 class LMSELoss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -233,3 +234,23 @@ class LMSELoss(nn.Module):
     
     def forward(self, pred, actual):
         return torch.log(self.mse(pred, actual)+1) # +1 to keep the loss from under 0
+
+# TODO: Implement to take both edges and nodes
+class LossFunc(nn.Module):
+    def __init__(self, mode = 0):
+        super().__init__()
+        
+        self.lmse = LMSELoss()
+        self.loss_mode = mode
+        logger.info(f'Loss mode = {self.loss_mode}')
+    def forward(self, pred, actual):
+        # pred : batch
+        # actual : batch
+        if self.loss_mode: # calculate loss on both edges as nodes
+            logger.debug(f'Calculating loss on both edges and nodes')
+            node_loss = self.lmse(pred.x, actual.x)
+            edge_loss = self.lmse(pred.edge_attr, actual.edge_attr)
+            return(node_loss + edge_loss)
+        else:
+            logger.debug(f'Calculating loss on nodes only')
+            return self.lmse(pred.x, actual.x)

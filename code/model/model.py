@@ -4,14 +4,14 @@
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+#from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
 from torch_geometric.data import Batch, Data
-from torch_geometric.nn.conv import GraphConv, MessagePassing
-from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree
-from torch_scatter import scatter
+#from torch_geometric.nn.conv import GraphConv, MessagePassing
+#from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
+#from torch_geometric.utils import degree
+#from torch_scatter import scatter
 from loguru import logger
-from model.utility import vgae_with_shift
+from Model.utility import vgae_with_shift
 try:
     from encoder import Encoder
     from decoder import Decoder
@@ -32,22 +32,32 @@ class MultiScaleAutoEncoder(nn.Module):
     Decode: G_l -> MPL -> Unpool .... -> MPL -> MLP -> G'_0 -> 
     """
 
-    def __init__(self, args, m_ids, m_gs, e_s):
+    def __init__(self, args, m_ids, m_gs, e_s, e_as):
         super().__init__()
         self.args = args
+        self.e_as = e_as
         self.encoder = Encoder(args, m_ids, m_gs)
         self.decoder = Decoder(args, m_ids, m_gs, e_s)
-        self.placeholder = Batch.from_data_list([Data(x=torch.ones(len(m_ids[-1]), args.latent_dim), 
-                                                                   edge_index = m_gs[-1],
-                                                                   weights = torch.ones(len(m_ids[-1])))])
+        # self.placeholder = Batch.from_data_list([Data(x=torch.ones(len(m_ids[-1]), args.latent_dim), 
+        #                                                            edge_index = m_gs[-1],
+        #                                                            weights = torch.ones(len(m_ids[-1])))])
         
     def forward(self, b_data, Train=True):
-        logger.debug(f'Pre encode: {b_data=}')
         kl, z, b_data = self.encoder(b_data, Train)
-        logger.debug(f'Bottom: {b_data=}')
+        # TODO: Update the b_data's edge_attr here
+        logger.debug(b_data)
+        b_data = self._latent_edge_attributes(b_data)
+        logger.debug(b_data)
         b_data = self.decoder(b_data, z)
-        logger.debug(f'Post Decode: {b_data=}')
         return b_data, kl
+    
+    def _latent_edge_attributes(self, b_data):
+        b_lst = Batch.to_data_list(b_data)
+        data_lst = []
+        for g in b_lst:
+            g.edge_attr = self.e_as[g.trajectory]
+            data_lst.append(g)
+        return Batch.from_data_list(data_lst)
     
 
 # Not sure why I should wrap it in this function

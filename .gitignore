@@ -21,4 +21,6 @@ code/flip_test/
 code/spec_test.py
 code/test.ipynb
 code/test.py
+Readings/*
+.DS*
 .gitignore

@@ -6,7 +6,7 @@ import torch
 
 from torch_geometric.data import Dataset
 from loguru import logger
-from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
+from dataprocessing.utils.helper_pooling import generate_multi_layer_stride, pool_edge_attr
 
 
 class MeshDataset(Dataset):
@@ -33,6 +33,7 @@ class MeshDataset(Dataset):
     self.m_ids = [{} for _ in range(self.layer_num)]
     self.m_gs = [{} for _ in range(self.layer_num + 1)]
     self.e_s = [{} for _ in range(self.layer_num )] 
+    self.e_as = {traj : None for traj in self.trajectories}
     self._get_bi_stride()
     super().__init__(self.data_dir)
   
@@ -54,7 +55,7 @@ class MeshDataset(Dataset):
     return torch.load(os.path.join(self.data_file, file)) # (G, m_ids, m_gs, e_s) -> max m_ids
   
   def _get_pool(self):
-     return self.m_ids, self.m_gs, self.e_s
+     return self.m_ids, self.m_gs, self.e_s, self.e_as
 
   def __next__(self):
     if self.last_idx == self.len()-1:
@@ -62,6 +63,14 @@ class MeshDataset(Dataset):
     else:
       self.last_idx += 1
       return self.get(self.last_idx)
+  
+  def _get_latent_attributes(self, graph, m_ids, m_gs):
+    edge_attr = graph.edge_attr
+    for i in range(self.layer_num):
+      mask = m_ids[i]
+      new_g = m_gs[i+1]
+      edge_attr = pool_edge_attr(mask, new_g, edge_attr, aggr='sum')
+    return edge_attr
 
   def __iter__(self):
     return self
@@ -87,6 +96,8 @@ class MeshDataset(Dataset):
         self.max_latent_nodes = len(m_ids[-1])
       if m_gs[-1].shape[-1] > self.max_latent_edges:
          self.max_latent_edges = m_gs[-1].shape[-1]
+      if self.e_as[traj] is None:
+         self.e_as[traj] = self._get_latent_attributes(g, m_ids, m_gs)
 
       for i in range(len(m_ids)):
         self.m_ids[i][str(traj)] = torch.tensor(m_ids[i])

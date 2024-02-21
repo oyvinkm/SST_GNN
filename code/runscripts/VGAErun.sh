@@ -14,5 +14,6 @@ python VGAErun_multi.py \
     -mpl_layers 2 \
     -loss_step 1 \
     -log_step 5 \
+    -progress_bar True \
     -make_gif False \
     -load_model False \

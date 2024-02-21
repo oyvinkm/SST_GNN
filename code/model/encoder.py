@@ -1,14 +1,17 @@
 import numpy as np
 import torch
+
+import torch.nn.functional as F
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+from torch_geometric.nn.norm import BatchNorm
 from torch_geometric.data import Batch
 from loguru import logger
 import os
 try:
-    from utility import MessagePassingLayer, pool_edge
+    from utility import MessagePassingLayer, pool_edge, Unpool
 except:
-    from .utility import MessagePassingLayer, pool_edge
+    from .utility import MessagePassingLayer, pool_edge, Unpool
     
 
 
@@ -23,9 +26,12 @@ class Encoder(nn.Module):
         self.dim_z = self.latent_dim
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
-        self.latent_vec_dim = len(m_ids[-1])
+        self.latent_vec_dim = args.max_latent_nodes
+        self.latent_edge_dim = args.max_latent_edges
+        self.zip_dim = args.zip_dim
         self.b = args.batch_size
         self.layers = nn.ModuleList()
+        self.pad = Unpool()
 
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
@@ -50,11 +56,20 @@ class Encoder(nn.Module):
                                                 latent_dim = self.latent_dim, 
                                                 args=self.args, 
                                                 bottom=True)
-        self.mlp_logvar = Sequential(Linear(self.latent_vec_dim, 64),
+        """ self.mlp_zip_node = Sequential(Linear(self.latent_vec_dim, 64),
+                        LeakyReLU(),
+                        Linear(64, self.zip_dim))
+
+        self.mlp_mu = Sequential(Linear(self.zip_dim*2, 1))
+        self.mlp_logvar = Sequential(Linear(self.zip_dim*2, 1))
+        
+        self.mlp_zip_edge = Sequential(Linear(self.latent_edge_dim, 500),
+                        LeakyReLU(),
+                        Linear(500, self.zip_dim)) """
+        self.mlp_mu = Sequential(Linear(self.latent_vec_dim, 64),
                         LeakyReLU(),
                         Linear(64, 1))
-
-        self.mlp_mu = Sequential(Linear(self.latent_vec_dim, 64),
+        self.mlp_logvar = Sequential(Linear(self.latent_vec_dim, 64),
                         LeakyReLU(),
                         Linear(64, 1))
 
@@ -65,9 +80,12 @@ class Encoder(nn.Module):
         for i in range(self.ae_layers): 
             b_data = self.layers[i](b_data)
         b_data = self.bottom_layer(b_data) #
-
+        b_data = self.pad_nodes_edges(b_data)
         if Train:
             x_t = self.batch_to_dense_transpose(b_data)
+            # z_x = self.mlp_zip_node(x_t)
+            # z_e = self.mlp_zip_edge(e_t)
+            # zip = torch.cat((z_x, z_e), dim = -1)
             mu = self.mlp_mu(x_t)
             log_var = self.mlp_logvar(x_t)
             z = self.sample(mu, log_var)
@@ -95,18 +113,31 @@ class Encoder(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps*std
 
+    def pad_nodes_edges(self, b_data):
+        b_lst = Batch.to_data_list(b_data)
+        data_lst = []
+        for idx, data in enumerate(b_lst):
+            data.x = self.pad(data.x, self.latent_vec_dim, np.arange(0, data.x.shape[0]))
+            data.weights = self.pad(data.weights, self.latent_vec_dim, np.arange(0, data.weights.shape[0]))
+            data.edge_attr = self.pad(data.edge_attr, self.latent_edge_dim, np.arange(0, data.edge_attr.shape[0]))
+            data_lst.append(data)
+        return Batch.from_data_list(data_lst).to(self.args.device)
+    
     def batch_to_dense_transpose(self, b_data):
-        count = np.unique(b_data.batch.cpu(), return_counts= True)
-        count = list(zip(count[0], count[1]))
-        b_lst = []
-        for b, len in count:
-            start = b*len
-            end = (b+1)*len 
-            b_lst.append(b_data.x[start:end].T)
-        batch = torch.stack(b_lst)
-        return batch
+        data_lst = Batch.to_data_list(b_data)
+        b_node_lst = []
+        # b_edge_lst = []
+        for b in data_lst:
+            node_vec = b.x.T
+            # edge_vec = b.edge_attr.T
+            b_node_lst.append(node_vec)
+            # b_edge_lst.append(edge_vec)
+        node_batch = torch.stack(b_node_lst)
+        # edge_batch = torch.stack(b_edge_lst)
+        return node_batch
 
 class Res_down(nn.Module):
+    """Take m_id and m_g in forwad not"""
     def __init__(self, channel_in, channel_out, args, m_id, m_g):
         super(Res_down, self).__init__()
         self.m_id = m_id
@@ -117,15 +148,16 @@ class Res_down(nn.Module):
         self.act1 = nn.ReLU()
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args) # skip
         self.act2 = nn.ReLU()
+        self.bn_nodes = BatchNorm(in_channels = channel_out)
+        self.bn_edges = BatchNorm(in_channels = channel_out)
 
     def _bi_pool_batch(self, b_data):
         b_lst = Batch.to_data_list(b_data)
         data_lst = []
-        g = self.m_g
-        if not torch.is_tensor(self.m_g):
-            g = torch.tensor(self.m_g)
-        mask = self.m_id
+        
         for idx, data in enumerate(b_lst):
+            g = self.m_g[data.trajectory]
+            mask = self.m_id[data.trajectory]
             data.x = data.x[mask]
             data.weights = data.weights[mask]
             data.edge_index, data.edge_attr = pool_edge(mask, g, data.edge_attr)
@@ -138,5 +170,8 @@ class Res_down(nn.Module):
         b_data = self.mpl1(b_data)
         b_data = self._bi_pool_batch(b_data)
         b_data = self.mpl2(b_data)
-        b_data.x = self.act1(b_data.x + b_skip.x)
+        b_data.x = self.bn_nodes(b_data.x + b_skip.x)
+        b_data.edge_attr = self.bn_edges(b_data.edge_attr + b_skip.edge_attr)
+        b_data.x = self.act1(b_data.x)
+        b_data.edge_attr = self.act2(b_data.edge_attr)
         return b_data

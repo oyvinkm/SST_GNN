@@ -7,7 +7,7 @@ ssh hendrix
 
 THIS MIGHT WORK
 module load anaconda3/2022.10
-module load cuda/11.6
+module load which nvcc
 conda create --name cluster
 conda init bash
 *restart your shell*
@@ -29,3 +29,9 @@ CANCELLING A JOB:
 
 SENDING FILES TO LOCAL
     scp -r hlp179@hendrixgate03fl:/home/hlp179/SST_GNN/code/meshes/relevant/ C:\Users\aske9\Desktop\SST_GNN\report_imgs
+
+
+CLUSTER 2:
+PYTORCH : 2.1.2
+CUDA: 11.8
+conda install pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=11.8 -c pytorch -c nvidia
