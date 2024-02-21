@@ -6,7 +6,7 @@ day="$(date +"%d-%m-%y")"
 # Some warningsremoval for floating-point round-off errors
 prefix="../logs"
 export TF_ENABLE_ONEDNN_OPTS=0
-python VGAErun_multi.py \
+python VGAErun.py \
     -epochs 7 \
     -ae_layers 2 \
     -hidden_dim 64 \

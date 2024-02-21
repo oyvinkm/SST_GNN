@@ -17,7 +17,7 @@ sys.path.append('model')
 sys.path.append('utils')
 from dataprocessing.dataset import MeshDataset, DatasetPairs
 from dataprocessing.utils.loading import save_traj_pairs
-from Model_multi.model import MultiScaleAutoEncoder
+from Model.model import MultiScaleAutoEncoder
 from utils.visualization import make_gif, plot_loss
 from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
 from utils.opt import build_optimizer, merge_dataset_stats
@@ -119,7 +119,7 @@ def main():
         train_data[0].edge_attr.shape[1],
         train_data[0].x.shape[0]
     )
-    m_ids, m_gs, e_s, args.max_latent_nodes = merge_dataset_stats(train_data, test_data, val_data)
+    m_ids, m_gs, e_s, e_as, args.max_latent_nodes = merge_dataset_stats(train_data, test_data, val_data)
    
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
@@ -136,7 +136,7 @@ def main():
     if not args.latent_space:
         logger.warning("Model is not going into latent_space")
     
-    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s)
+    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, e_as)
     model = model.to(args.device)
     if args.load_model:
         model_path = os.path.join(args.save_model_dir, args.model_file)
@@ -148,7 +148,7 @@ def main():
     if args.make_gif:
         logger.success('Making a gif <3')
         args.model_file = 'test_full_traj'
-        make_gif(model, gif_data, args)
+        make_gif(model, val_data, args)
         logger.success('Made a gif <3')
         exit()
 
