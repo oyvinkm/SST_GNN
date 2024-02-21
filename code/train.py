@@ -1,32 +1,34 @@
 """
     Training/testing file with funcions train(), test(), validate()
 """
+
 import copy
-import os
 import json
-import numpy as np
-import torch
-import enlighten
-from loguru import logger
-from torch import nn
-from torch.nn import MSELoss
-from tqdm import trange
-from utils.transforms import AttributeMask, FlipGraph
-from torch.nn import functional as F
-from torch_geometric import transforms as T
-from matplotlib import pyplot as plt
+import os
 from random import randint
 
-from utils.visualization import plot_dual_mesh
+import enlighten
+import numpy as np
+import torch
+from loguru import logger
+from matplotlib import pyplot as plt
+from torch import nn
+from torch.nn import MSELoss
+from torch.nn import functional as F
+from torch_geometric import transforms as T
 
-def train(model, train_loader, val_loader, optimizer, args):
+from utils.transforms import AttributeMask, FlipGraph
+from utils.visualization import save_mesh 
+from utils.opt import build_optimizer
+
+
+def train(model, train_loader, validation_loader, args):
     """
     Performs a training loop on the dataset for MeshGraphNets. Also calls
     test and validation functions.
     """
     model = model.to(args.device)
-
-
+    optimizer = build_optimizer(args, model.parameters())
     criterion = LMSELoss()
 
     train_losses = []
@@ -36,11 +38,20 @@ def train(model, train_loader, val_loader, optimizer, args):
     beta = 0.01
     if args.progress_bar:
         manager = enlighten.get_manager()
-        epochs = manager.counter(total=args.epochs, desc="Epochs", unit="Epochs", color="red")
+        epochs = manager.counter(
+            total=args.epochs, desc="Epochs", unit="Epochs", color="red"
+        )
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
-            batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
+            batch_counter = manager.counter(
+                total=len(train_loader),
+                desc="Batches",
+                unit="Batches",
+                color="blue",
+                leave=False,
+                position=True,
+            )
         total_loss = 0
         model.train()
         for idx, batch in enumerate(train_loader):
@@ -52,14 +63,12 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch = batch.to(args.device)
             batch.x = F.normalize(batch.x)
             batch.edge_attr = F.normalize(batch.edge_attr)
-            logger.debug(f'{batch=}')
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
             optimizer.zero_grad()  # zero gradients each time
-            logger.debug(f'{b_data=}')
             pred, kl = model(b_data)
-            rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
-            loss = beta*kl + rec_loss
+            rec_loss = criterion(pred.x[:, :2], batch.x[:, :2])
+            loss = beta * kl + rec_loss
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -69,7 +78,7 @@ def train(model, train_loader, val_loader, optimizer, args):
         train_losses.append(total_loss)
         # Every tenth epoch, calculate acceleration test loss and velocity validation loss
         if epoch % args.log_step == 0:
-            val_loss = validate(model, val_loader, criterion, epoch, args)
+            val_loss = validate(model, validation_loader, criterion, epoch, args)
             val_losses.append(val_loss)
             if args.save_model:
                 if val_loss < best_val_loss:
@@ -84,24 +93,27 @@ def train(model, train_loader, val_loader, optimizer, args):
             val_losses.append(val_losses[-1])
 
         if epoch % args.loss_step == 0:
-            logger.success(f"Loss Epoch_{epoch}:\n\
+            logger.success(
+                f"Loss Epoch_{epoch}:\n\
                         Training Loss : {round(train_losses[-1], 4)}\n\
-                        Validation Loss : {round(val_losses[-1], 4)}")
+                        Validation Loss : {round(val_losses[-1], 4)}"
+            )
     if args.progress_bar:
         epochs.close()
         manager.stop()
 
     return train_losses, val_losses, best_model
 
+
 @torch.no_grad()
-def validate(model, val_loader, criterion, epoch, args):
+def validate(model, validation_loader, criterion, epoch, args):
     """
     Performs a validation run on our current model with the validationset
-    saved in the val_loader.
+    saved in the validation_loader.
     """
     total_loss = 0
     model.eval()
-    for idx, batch in enumerate(val_loader):
+    for idx, batch in enumerate(validation_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
         # data needs to be preserved in order to correctly calculate the loss
@@ -111,7 +123,7 @@ def validate(model, val_loader, criterion, epoch, args):
         b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        loss = criterion(pred.x[:,:2], b_data.x[:,:2])
+        loss = criterion(pred.x[:, :2], b_data.x[:, :2])
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
@@ -125,7 +137,7 @@ def test(model, test_loader, args):
     Performs a test run on our final model with the test
     saved in the test_loader.
     """
-    logger.debug(f'======= TESTING =======')
+    logger.debug("======= TESTING =======")
     kld = nn.KLDivLoss(reduction="batchmean")
 
     loss_over_t = []
@@ -143,14 +155,14 @@ def test(model, test_loader, args):
         batch.edge_attr = F.normalize(batch.edge_attr)
         # Needs to clone as operations happens in place
         b_data = batch.clone()
-        logger.error(f'{b_data=}')
+        logger.error(f"{b_data=}")
         pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
-            save_mesh(pred, batch, 'test', args)
-        loss = criterion(pred.x[:,:2], batch.x[:,:2])
+            save_mesh(pred, batch, "test", args)
+        loss = criterion(pred.x[:, :2], batch.x[:, :2])
         total_loss += loss.item()
-        logger.error(f'{pred.x.shape=}')
-        logger.error(f'{batch.x.shape=}')
+        logger.error(f"{pred.x.shape=}")
+        logger.error(f"{batch.x.shape=}")
         total_accuracy += kld(input=torch.log(pred.x), target=batch.x).item()
         loss_over_t.append(loss.item())
         ts.append(batch.t.cpu())
@@ -160,21 +172,24 @@ def test(model, test_loader, args):
     save_accuracy(total_accuracy, args)
     return total_loss, loss_over_t, ts
 
+
 def save_accuracy(accuracy, args):
     if not os.path.isdir(args.save_accuracy_dir):
         os.mkdir(args.save_accuracy_dir)
     filename = "accuracy_" + args.time_stamp
-    path = os.path.join(args.save_accuracy_dir, filename+".txt")
+    path = os.path.join(args.save_accuracy_dir, filename + ".txt")
     with open(path, "w") as f:
         f.write("accuracy: %s" % (accuracy))
     f.close()
-    
+
+
 def augment_batch(b_data):
-    augment = randint(0,1)
+    augment = randint(0, 1)
     if augment:
-        augments = T.Compose([FlipGraph()]) 
+        augments = T.Compose([FlipGraph()])
         b_data = augments(b_data.clone())
     return b_data
+
 
 def transform_batch(b_data, args):
     if args.transform:
@@ -183,7 +198,8 @@ def transform_batch(b_data, args):
         return trsfmd
     else:
         return b_data.clone()
-    
+
+
 def save_model(best_model, args):
     """Saves the model and the decoder in a folder"""
     if not os.path.isdir(args.save_model_dir):
@@ -192,14 +208,14 @@ def save_model(best_model, args):
     final_place = os.path.join(args.save_model_dir, model_name)
     if not os.path.isdir(final_place):
         os.mkdir(final_place)
-    
-    path = os.path.join(args.save_model_dir, model_name + ".pt")
+
     decoder_path = os.path.join(final_place, "decoder.pt")
     encoder_path = os.path.join(final_place, "encoder.pt")
     model_path = os.path.join(final_place, "model.pt")
     torch.save(best_model.decoder.state_dict(), decoder_path)
     torch.save(best_model.encoder.state_dict(), encoder_path)
     torch.save(best_model.state_dict(), model_path)
+
 
 def save_args(args):
     # logger.debug(f'{args.__dict__=}')
@@ -210,25 +226,24 @@ def save_args(args):
     with open(path, "w") as f:
         json.dump(args.__dict__, f)
 
-def save_mesh(pred, truth, idx, args):
-    if not os.path.isdir(args.save_mesh_dir):
-        os.mkdir(args.save_mesh_dir)
-    folder_path = os.path.join(args.save_mesh_dir, args.time_stamp)
-    if not os.path.isdir(folder_path):
-        logger.info(f'Created folder: {folder_path}')
-        os.mkdir(folder_path)
-    mesh_name = f"mesh_plot_{idx}"
-    path = os.path.join(folder_path, mesh_name + ".png")
-    # pred.x = pred.x - truth.x
-    fig = plot_dual_mesh(pred, truth)
-    fig.savefig(path, bbox_inches="tight")
-    plt.close()
-    logger.info(f'Mesh saved at {path}')
-    
+
 class LMSELoss(nn.Module):
     def __init__(self):
         super().__init__()
         self.mse = nn.MSELoss()
-    
+
     def forward(self, pred, actual):
-        return torch.log(self.mse(pred, actual)+1) # +1 to keep the loss from under 0
+        return torch.log(self.mse(pred, actual) + 1)  # +1 to keep the loss from under 0
+
+
+
+
+
+
+
+
+
+
+
+
+

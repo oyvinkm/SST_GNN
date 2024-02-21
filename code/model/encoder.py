@@ -24,6 +24,8 @@ class Encoder(nn.Module):
         self.in_dim_node = args.in_dim_node
         self.in_dim_edge = args.in_dim_edge
         self.latent_vec_dim = len(m_ids[-1])
+        self.latent_edge_dim = m_gs[-1].shape[-1]
+        self.zip_dim = args.zip_dim
         self.b = args.batch_size
         self.layers = nn.ModuleList()
 
@@ -50,13 +52,17 @@ class Encoder(nn.Module):
                                                 latent_dim = self.latent_dim, 
                                                 args=self.args, 
                                                 bottom=True)
-        self.mlp_logvar = Sequential(Linear(self.latent_vec_dim, 64),
+        self.mlp_zip_node = Sequential(Linear(self.latent_vec_dim, 64),
                         LeakyReLU(),
-                        Linear(64, 1))
+                        Linear(64, self.zip_dim))
 
-        self.mlp_mu = Sequential(Linear(self.latent_vec_dim, 64),
+        self.mlp_mu = Sequential(Linear(self.zip_dim*2, 1))
+        self.mlp_logvar = Sequential(Linear(self.zip_dim*2, 1))
+        
+        self.mlp_zip_edge = Sequential(Linear(self.latent_edge_dim, 500),
                         LeakyReLU(),
-                        Linear(64, 1))
+                        Linear(500, self.zip_dim))
+
 
     def forward(self, b_data, Train = True):
         b_data.x = self.node_encoder(b_data.x)
@@ -66,19 +72,24 @@ class Encoder(nn.Module):
             b_data = self.layers[i](b_data)
         b_data = self.bottom_layer(b_data) #
 
+        x_t, e_t = self.batch_to_dense_transpose(b_data)
+        z_x = self.mlp_zip_node(x_t)
+        z_e = self.mlp_zip_edge(e_t)
+        zipper = torch.cat((z_x, z_e), dim = -1)
+
         if Train:
-            x_t = self.batch_to_dense_transpose(b_data)
-            mu = self.mlp_mu(x_t)
-            log_var = self.mlp_logvar(x_t)
+            mu = self.mlp_mu(zipper)
+            log_var = self.mlp_logvar(zipper)
             z = self.sample(mu, log_var)
-            kl = torch.mean(-0.5 * torch.sum(1+log_var-mu**2-log_var.exp(), dim=1), dim=0)
+            kl = torch.mean(
+                -0.5 * torch.sum(1+log_var-mu**2-log_var.exp(), dim=1), dim=0
+            )
 
         else:
-            x_t = self.batch_to_dense_transpose(b_data)
-            z = self.mlp_mu(x_t)
+            z = self.mlp_mu(zipper)
             kl = None
-
         # self.save_bdata(b_data)
+
 
         return kl, z, b_data
 
@@ -90,21 +101,26 @@ class Encoder(nn.Module):
             torch.save(b_data, PATH)
 
     def sample(self, mu, logvar):
-        """Shamelessly stolen from https://github.com/julschoen/Latent-Space-Exploration-CT/blob/main/Models/VAE.py"""
+        """Shamelessly stolen from 
+        https://github.com/julschoen/Latent-Space-Exploration-CT/blob/main/Models/VAE.py"""
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps*std
 
     def batch_to_dense_transpose(self, b_data):
-        count = np.unique(b_data.batch.cpu(), return_counts= True)
-        count = list(zip(count[0], count[1]))
-        b_lst = []
-        for b, len in count:
-            start = b*len
-            end = (b+1)*len 
-            b_lst.append(b_data.x[start:end].T)
-        batch = torch.stack(b_lst)
-        return batch
+        data_lst = Batch.to_data_list(b_data)
+        b_node_lst = []
+        b_edge_lst = []
+        for b in data_lst:
+            #start = b*len
+            #end = (b+1)*len
+            node_vec = b.x.T
+            edge_vec = b.edge_attr.T
+            b_node_lst.append(node_vec)
+            b_edge_lst.append(edge_vec)
+        node_batch = torch.stack(b_node_lst)
+        edge_batch = torch.stack(b_edge_lst)
+        return node_batch, edge_batch
 
 class Res_down(nn.Module):
     def __init__(self, channel_in, channel_out, args, m_id, m_g):

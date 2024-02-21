@@ -1,5 +1,7 @@
-import tensorflow as tf
 import enum
+
+import tensorflow as tf
+
 #Utility functions, provided in the release of the code from the original MeshGraphNets study:
 #https://github.com/deepmind/deepmind-research/tree/master/meshgraphnets
 

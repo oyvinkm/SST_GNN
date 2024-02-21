@@ -1,15 +1,18 @@
+from functools import wraps
+import types
+
+from loguru import logger
 import numpy as np
 import scipy
-import types
 import torch
 from torch import nn
-from functools import wraps
-from loguru import logger
 from torch.nn import LayerNorm, Linear, ReLU, Sequential
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree, coalesce,to_dense_adj, contains_isolated_nodes
+from torch_geometric.utils import (coalesce, contains_isolated_nodes, degree,
+                                   to_dense_adj)
 from torch_scatter import scatter
+
 
 def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
     r"""Pools the edges of a graph to a new set of edges using the idxHR_to_idxLR mapping.
@@ -465,8 +468,9 @@ class Unpool(nn.Module):
 
 #################### Direction training ##########################
 from enum import Enum
-import os
 import json
+import os
+
 
 def torch_log2(x):
     return torch.log(x) / np.log(2.0)
@@ -518,10 +522,7 @@ def add_forward_with_shift(generator):
     generator.gen_shifted = types.MethodType(gen_shifted, generator)
     generator.dim_shift = generator.latent_dim
 
-def save_run_params(args):
-    os.makedirs(args['out'], exist_ok=True)
-    with open(os.path.join(args['out'], 'args.json'), 'w') as args_file:
-        json.dump(args, args_file)
+
 
 class DeformatorType(Enum):
     FC = 1

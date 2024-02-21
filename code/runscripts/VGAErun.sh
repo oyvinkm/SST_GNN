@@ -3,52 +3,43 @@
 
 now="$(date +"%y_%m_%d-%H.%M")"
 day="$(date +"%d-%m-%y")"
+target="19-02-24/test2"         # used when we want to load a model
 # Some warningsremoval for floating-point round-off errors
 prefix="../logs"
-export TF_ENABLE_ONEDNN_OPTS=0
-python VGAErun.py \
-    -ae_layers 2 \
-    -batch_size 16 \
-    -edge_conv True \
-    -epochs 35 \
-    -hidden_dim 32 \
+TF_ENABLE_ONEDNN_OPTS=0 python VGAErun.py \
+    -ae_layers 3 \
+    -batch_size 8 \
+    -epochs 80 \
     -instance_id 1 \
-    -latent_space True \
     -loss_step 10 \
     -log_step 2 \
     -lr 1e-4 \
     -latent_dim 128 \
     -logger_lvl INFO \
     -loss LMSE \
-    -load_model True \
+    -load_model False \
     -mpl_layers 1 \
-    -mpl_ratio 0.8 \
     -make_gif True \
     -model_file model.pt \
     -num_blocks 1 \
-    -normalize False \
-    -num_workers 1 \
+    -normalize false \
     -out_feature_dim 11 \
-    -opt adam \
-    -pool_strat SAG \
-    -progress_bar False \
-    -random_search False \
-    -residual True \
+    -random_search True \
     -save_args_dir $prefix/args/$day \
+    -save_encodings False \
     -save_gif_dir $prefix/gifs/$day \
     -save_mesh_dir $prefix/meshes/$day \
-    -save_model_dir $prefix/model_chkpoints/ \
+    -save_model_dir $prefix/model_chkpoints/$day \
     -save_plot_dir $prefix/plots/$day \
-    -shuffle True \
-    -save_plot True \
-    -save_model True \
-    -save_visual True \
-    -save_losses True \
-    -save_mesh True \
+    -save_plot true \
+    -save_model true \
+    -save_visual true \
+    -save_losses true \
+    -save_mesh true \
     -test_ratio 0.1 \
     -time_stamp $now \
     -train True \
-    -transform False \
+    -transform false \
     -transform_p 0.3 \
     -val_ratio 0.1 \
-    -weight_decay 0.0005 \
+    -zip_dim 64

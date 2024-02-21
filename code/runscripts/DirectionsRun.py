@@ -1,81 +1,96 @@
 #!/usr/bin/env python3
 """Main file for running setup, training and testing"""
-import argparse
 import sys
-import torch
-import os
-import json 
+import argparse
 from datetime import datetime
+import json
+import os
+import copy
 import warnings
-from torch_geometric.loader import DataLoader
-from loguru import logger
-
-
-sys.path.append('../')
-from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
-from model.model import make_vgae
+sys.path.append("../")
 from dataprocessing.utils.loading import split_pairs
-from model.utility import save_run_params, DEFORMATOR_TYPE_DICT
+from latent_trainer import train
+from torch_geometric.data import Batch
+from loguru import logger
 from model.deformator import LatentDeformator
-from model.shiftpredictor import ResNetShiftPredictor, LeNetShiftPredictor
-from latent_trainer import Params, Trainer, save_difference_norms
-from dataprocessing.dataset import MeshDataset
+from model.utility import DEFORMATOR_TYPE_DICT, save_run_params
+from model.decoder import Decoder
+import torch
+from dataprocessing.dataset import DatasetPairs, MeshDataset
+from torch_geometric.loader import DataLoader
+from utils.parserfuncs import none_or_str, t_or_f
+from utils.visualization import deformater_visualize
 
-def load_args():
-    args = argparse.Namespace()
-    f = os.path.join('..','logs','args','SOTAargs.json')
-    with open(f) as json_file:
-        d = json.load(json_file)
-        for key, val in d.items():
-            args.__dict__[key] = val 
-    return args
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-epochs', type=int, default=2000)
-parser.add_argument('-logger_lvl', type=str, default='DEBUG')
-parser.add_argument('-time_stamp', type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M"))
+now = datetime.now().strftime("%H.%M")
+date = datetime.now().strftime("%d_%m")
+timestamp = datetime.now().strftime("%d_%m-%H.%M")
+parser.add_argument("-decoder_path", type=str, 
+    default="../logs/model_chkpoints/decoder.pt")
+parser.add_argument("-device", type=str, default="cpu")
+parser.add_argument("-deformator_type", type=str, default="proj")
+parser.add_argument("-epochs", type=int, default=2000)
+parser.add_argument("-logger_lvl", type=str, default="DEBUG")
+parser.add_argument("-make_gif", type=t_or_f, default="False")
+parser.add_argument("-decode_test", type=t_or_f, default="True")
+parser.add_argument("-time_of_the_day", type=str, default=now)
+parser.add_argument("-time_stamp", type=str, default=timestamp)
+parser.add_argument("-vgae_args_path", type=str, 
+    default="../logs/args/SOTAargs.json")
+parser.add_argument("-save_mesh_dir", type=str, 
+    default="../logs/direction/meshes/")
+parser.add_argument("-date", type=str, default=date)
+
 deformator_args = parser.parse_args()
 
+
 def main():
-    vgae_args = load_args()
+    vgae_args = load_args(path = deformator_args.vgae_args_path)
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     logger.remove(0)
     logger.add(sys.stderr, level=deformator_args.logger_lvl)
-    vgae_args.device = ("cuda" if torch.cuda.is_available() else "cpu")
+    vgae_args.device = "cuda" if torch.cuda.is_available() else "cpu"
+    deformator_args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # 'deformator' : 'proj', seems to be best performing
-    direction_args = {
-        'deformator' : 'proj',
-        'directions_count' : 1,
-        'out' : 'save_location',
-        'gen_path' : os.path.join(vgae_args.save_model_dir, vgae_args.model_file),
-        'def_random_init' : True,
-        'n_steps' : int(10)
-    }
+    deformator = LatentDeformator(
+        shift_dim=vgae_args.latent_dim,
+        input_dim=vgae_args.latent_dim,
+        out_dim=vgae_args.latent_dim,
+        type=DEFORMATOR_TYPE_DICT[deformator_args.deformator_type],
+    ).to(vgae_args.device)
 
-    save_run_params(direction_args)
-    
+    latent_scaler = LatentScaler(vgae_args.latent_dim)
 
-    deformator = LatentDeformator(shift_dim = vgae_args.latent_dim,
-                                  input_dim = vgae_args.latent_dim,
-                                  out_dim = vgae_args.latent_dim,
-                                  type = DEFORMATOR_TYPE_DICT[direction_args['deformator']],
-                                  random_init = direction_args['def_random_init']).to(vgae_args.device)
-    
-    dataset_pairs = torch.load(os.path.join('..','data','latent_space','encoded_dataset_pairs.pt'))
+    dataset_pairs = torch.load(
+        os.path.join("..", "data", "latent_space", "encoded_dataset_pairs.pt")
+    )
     train_set, validation_set = split_pairs(dataset_pairs)
-    save_difference_norms(train_set)
-    
+
     train_loader = DataLoader(
-        train_set, batch_size=16, shuffle=vgae_args.shuffle)
+        train_set,
+        batch_size=16,
+        shuffle=vgae_args.shuffle
+    )
+
     validation_loader = DataLoader(
-        validation_set, batch_size=1, shuffle=vgae_args.shuffle)
+        validation_set,
+        batch_size=1
+    )
+    
+    train(deformator, latent_scaler, train_loader, validation_loader, deformator_args)
+    
+    if deformator_args.make_gif:
+        deformater_visualize(
+            deformator,
+            train_loader, 
+            deformator_args, 
+            vgae_args
+        )
 
-    params = Params(**direction_args)
-    trainer = Trainer(params, out_dir=direction_args['out'], device=vgae_args.device)
-    trainer.train(deformator, train_loader, validation_loader, deformator_args)
 
-    # save_results_charts(G, deformator, params, trainer.log_dir, device = vgae_args.device)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+
+

@@ -2,11 +2,12 @@
 import os
 import pickle
 from typing import Callable, Optional
+
+from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
+from dataprocessing.utils.normalization import get_stats
+from loguru import logger
 import torch
 from torch_geometric.data import Dataset
-from loguru import logger
-from dataprocessing.utils.normalization import get_stats
-from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
 
 
 class MeshDataset(Dataset):

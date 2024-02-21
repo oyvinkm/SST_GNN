@@ -1,18 +1,17 @@
 
-import torch
+import os
 import random
-from torch_geometric.loader import DataLoader
+
+import h5py
 import numpy as np
 import pandas as pd
-import os
-import numpy as np
+import tensorflow as tf
 import torch
 from torch_geometric.data import Data
-from .normalization import get_stats
-from .triangle_to_edges import triangles_to_edges, NodeType
-import h5py
-import tensorflow as tf
+from torch_geometric.loader import DataLoader
 
+from .normalization import get_stats
+from .triangle_to_edges import NodeType, triangles_to_edges
 
 # OS: 
 # 'Linux' : Linux

@@ -1,19 +1,22 @@
-import os
-from matplotlib import tri as mtri
-from matplotlib import animation
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-import pandas as pd
-from sklearn.manifold import TSNE
-import os 
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from torch_geometric.data import Batch
-import torch
 import copy
-from torch_geometric.utils import to_networkx
+import os
+
+import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from model.decoder import Decoder 
+import torch
 from loguru import logger
+from matplotlib import animation
+from dataprocessing.dataset import DatasetPairs, MeshDataset
+from matplotlib import tri as mtri
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from sklearn.manifold import TSNE
+from torch_geometric.loader import DataLoader
+from torch_geometric.data import Batch
+from torch_geometric.utils import to_networkx
 
 
 def save_plots(args, losses, test_losses, velo_val_losses):
@@ -124,7 +127,7 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
         pass
 
 def make_gif(model, dataset, args):
-    assert args.load_model, "you cannot make a gif if you're not going to load a model"
+    logger.info("Making gif...")
     PRED = copy.deepcopy(dataset)
     GT = copy.deepcopy(dataset)
     DIFF = copy.deepcopy(dataset)
@@ -134,10 +137,22 @@ def make_gif(model, dataset, args):
             pred_data.x = pred.x
             diff_data.x = pred_data.x - gt_data.x.to(args.device)
     logger.info("processing done...")
-    gif_name = args.model_file + "anim.gif"
+    gif_name = args.time_stamp + args.model_file[:-3]
     make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
     logger.success("gif complete...")
 
+def make_gif_from_latents(z_shifted, z, args):
+    """makes a gif """
+    logger.info("processing done...")
+    folder_path = os.path.join('..','logs','direction','gifs')
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+    folder_path = os.path.join(folder_path, args.date)
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+    gif_name = args.time_of_the_day
+    make_animation(z_shifted, z_shifted, z, folder_path, gif_name, skip = 1)
+    logger.success("gif complete")
 
 def draw_graph(g, save = False, args = None):
   """Draws the graph given"""
@@ -162,6 +177,22 @@ def draw_graph(g, save = False, args = None):
     plt.savefig(os.path.join(args.save_dir, f'graph_{args.num_nodes}'))
   
   plt.show()
+
+def save_mesh(pred, truth, idx, args):
+    if not os.path.isdir(args.save_mesh_dir):
+        os.mkdir(args.save_mesh_dir)
+    folder_path = os.path.join(args.save_mesh_dir, args.time_stamp)
+    if not os.path.isdir(folder_path):
+        logger.info(f"Created folder: {folder_path}")
+        os.mkdir(folder_path)
+    mesh_name = f"mesh_plot_{idx}"
+    path = os.path.join(folder_path, mesh_name + ".png")
+    # pred.x = pred.x - truth.x
+    fig = plot_dual_mesh(pred, truth)
+    fig.savefig(path, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Mesh saved at {path}")
+
 
 @torch.no_grad()
 def plot_mesh(gs, title = None, args = None):
@@ -330,3 +361,89 @@ def visualize_latent_space(latent_vectors, time_stamps, n_components = 2):
   ax.get_legend().remove()
   ax.set_aspect('equal')
   return fig
+
+
+@torch.no_grad()
+def shift_latents(args, deformator, validation_loader):
+    """shifts every latent vector by the given deformator."""
+    z_shifted = []
+    for i, (z, _) in enumerate(validation_loader):
+        z = z.to(args.device)
+        shifted = deformator(z)
+        prediction = z + shifted.squeeze(dim=2)
+        z_shifted.append((prediction, _))
+    return DataLoader(z_shifted, batch_size = 1)
+
+
+def initialize_b_data(args, b_data):
+    # b_data has to be one example
+    no_edges = b_data.edge_index.shape[-1]
+    edge_attr = torch.rand((no_edges, args.latent_dim))
+    x = torch.rand((b_data.x.shape))
+    b_data.edge_attr = edge_attr
+    b_data.x = x
+    return Batch.from_data_list([b_data])
+
+# We want to use dataloaders instead of what we have done.
+@torch.no_grad()
+def decode_latent_vec(args, decoder, validation_loader):
+    """decodes the latent vector given in zs and places them in placeholder 
+    s.t. they can be shown in a gif"""
+    b_data_PATH = os.path.join(args.graph_structure_dir, 'b_data.pt')
+    b_data = torch.load(b_data_PATH).to(args.device)
+    b_data = initialize_b_data(args, b_data[0])
+    res = []
+    for i, (z, _) in enumerate(validation_loader):
+        z = z.to(args.device)
+        b_data_cp = copy.deepcopy(b_data)
+        graph = decoder(b_data_cp, z)
+        res.extend(graph)
+    
+    return res
+
+
+def insert_graphs_into_meshgraph(meshdataset, decoded):
+    LENGTH = len(decoded)
+    for i in range(LENGTH):
+        try:
+            meshdataset[i].x = decoded[i].x
+        except:
+            logger.debug(f'{meshdataset[i]=} \n {decoded[i]=}')
+    return meshdataset[:LENGTH]
+
+
+def deformater_visualize(deformator, validation_loader, deformator_args, 
+    vgae_args):
+    """This function decodes a single latent vector and saves it as a graph, 
+    additionally it makes a gif of what the validation_set would look like 
+    if it's decoded"""
+    m_ids, m_gs, e_s = (
+        torch.load(os.path.join(vgae_args.graph_structure_dir,'m_ids.pt')),
+        torch.load(os.path.join(vgae_args.graph_structure_dir,'m_gs.pt')), 
+        torch.load(os.path.join(vgae_args.graph_structure_dir,'e_s.pt')))
+    decoder = Decoder(vgae_args, m_ids, m_gs, e_s).to(vgae_args.device)
+    decoder.load_state_dict(torch.load(deformator_args.decoder_path))
+    z_shifted_loader = shift_latents(deformator_args, deformator, validation_loader)
+    if deformator_args.decode_test:
+        # decodes and saves a single graph
+        b_data_PATH = os.path.join(vgae_args.graph_structure_dir, 'b_data.pt')
+        b_data = torch.load(b_data_PATH).to(vgae_args.device)
+        b_data = initialize_b_data(vgae_args, b_data[0]).to(vgae_args.device)
+        latent_batch = next(iter(validation_loader))[0].to(vgae_args.device)
+        logger.debug(f'{b_data=} \n {latent_batch.shape=}')
+        graph_batch = decoder(b_data, latent_batch)
+        graph = Batch.to_data_list(graph_batch)[0]
+        save_mesh(graph, graph, 'nan', deformator_args)
+
+    # length 600
+    dataset_z = MeshDataset(vgae_args)
+    dataset_z_shifted = MeshDataset(vgae_args)
+    
+    # length 44
+    decoded = decode_latent_vec(vgae_args, decoder, validation_loader)
+    shifted_decoded = decode_latent_vec(vgae_args, decoder, z_shifted_loader)
+
+    predicted = insert_graphs_into_meshgraph(dataset_z_shifted, shifted_decoded)
+    target = insert_graphs_into_meshgraph(dataset_z, decoded)
+
+    make_gif_from_latents(predicted, target, deformator_args)
