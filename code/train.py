@@ -61,6 +61,9 @@ def train(model, train_loader, val_loader, optimizer, args):
             pred, kl = model(b_data)
             rec_loss = criterion(pred.x[:,:2], batch.x[:,:2])
             loss = beta*kl + rec_loss
+            if np.isnan(loss.item()):
+                logger.error(f'Loss became NaN after {epoch} epochs :(')
+                return train_losses, val_losses, best_model
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -102,6 +105,8 @@ def validate(model, val_loader, criterion, epoch, args):
     """
     total_loss = 0
     model.eval()
+    rand_idx = randint(0, len(val_loader)-1)
+    logger.info(f'======= VALIDATING =======')
     for idx, batch in enumerate(val_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
@@ -114,7 +119,7 @@ def validate(model, val_loader, criterion, epoch, args):
         pred, _ = model(b_data, Train=False)
         loss = criterion(pred.x[:,:2], b_data.x[:,:2])
         total_loss += loss.item()
-        if idx == 0 and args.save_mesh:
+        if idx == rand_idx and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
     total_loss /= idx
     return total_loss
@@ -126,7 +131,7 @@ def test(model, test_loader, args):
     Performs a test run on our final model with the test
     saved in the test_loader.
     """
-    logger.debug(f'======= TESTING =======')
+    logger.info(f'======= TESTING =======')
     kld = nn.KLDivLoss(reduction="batchmean")
 
     loss_over_t = []
@@ -248,7 +253,7 @@ class LossFunc(nn.Module):
         # actual : batch
         if self.loss_mode: # calculate loss on both edges as nodes
             logger.debug(f'Calculating loss on both edges and nodes')
-            node_loss = self.lmse(pred.x, actual.x)
+            node_loss = self.lmse(pred.x[:,:2], actual.x[:,:2])
             edge_loss = self.lmse(pred.edge_attr, actual.edge_attr)
             return(node_loss + edge_loss)
         else:

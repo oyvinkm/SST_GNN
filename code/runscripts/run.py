@@ -17,7 +17,7 @@ sys.path.append('model')
 sys.path.append('utils')
 from dataprocessing.dataset import MeshDataset, DatasetPairs
 from dataprocessing.utils.loading import save_traj_pairs
-from Model.model import MultiScaleAutoEncoder
+from model.model import MultiScaleAutoEncoder
 from utils.visualization import make_gif, plot_loss
 from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
 from utils.opt import build_optimizer, merge_dataset_stats
@@ -171,10 +171,10 @@ def main():
     )
     # Create Dataloaders for train, test and validation
     train_loader = DataLoader(
-        train_data[:10], batch_size=args.batch_size, shuffle=args.shuffle
+        train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
-    val_loader = DataLoader(val_data[:10], batch_size=1, shuffle=False)
-    test_loader = DataLoader(test_data[:10], batch_size=1, shuffle=False)
+    val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     logger.success(f'All data loaded')
     # TRAINING
     train_losses, val_losses, model = train(

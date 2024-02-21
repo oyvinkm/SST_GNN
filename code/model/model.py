@@ -11,7 +11,7 @@ from torch_geometric.data import Batch, Data
 #from torch_geometric.utils import degree
 #from torch_scatter import scatter
 from loguru import logger
-from Model.utility import vgae_with_shift
+from model.utility import vgae_with_shift
 try:
     from encoder import Encoder
     from decoder import Decoder
@@ -57,7 +57,7 @@ class MultiScaleAutoEncoder(nn.Module):
         for g in b_lst:
             g.edge_attr = self.e_as[g.trajectory]
             data_lst.append(g)
-        return Batch.from_data_list(data_lst)
+        return Batch.from_data_list(data_lst).to(self.args.device)
     
 
 # Not sure why I should wrap it in this function
