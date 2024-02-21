@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """Main file for running setup, training and testing"""
 import argparse
-import math
 import os
-import random
 import sys
 import warnings
+import copy
 from datetime import datetime
-import numpy as np
 import torch
 from loguru import logger
-from sklearn.model_selection import train_test_split
-from torch_geometric import transforms as T
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import ParameterGrid
 from random import choice
@@ -21,10 +17,10 @@ sys.path.append('model')
 sys.path.append('utils')
 from dataprocessing.dataset import MeshDataset, DatasetPairs
 from dataprocessing.utils.loading import save_traj_pairs
-from model.model import MultiScaleAutoEncoder
-from utils.visualization import plot_dual_mesh, make_gif, plot_test_loss, plot_loss
+from Model_multi.model import MultiScaleAutoEncoder
+from utils.visualization import make_gif, plot_loss
 from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
-from utils.opt import build_optimizer
+from utils.opt import build_optimizer, merge_dataset_stats
 from train import test, train
 
 def apply_transform(args):
@@ -43,22 +39,22 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-batch_size', type=int, default=16)
-parser.add_argument('-data_dir', type=str, default='../data/cylinder_flow/')
-parser.add_argument('-epochs', type=int, default=101)
-parser.add_argument('-edge_conv', type=t_or_f, default=False)
+parser.add_argument('-data_dir', type=str, default='../data/cylinder_flow/trajectories_1768')
+parser.add_argument('-epochs', type=int, default=1)
+parser.add_argument('-edge_conv', type=t_or_f, default=True)
 parser.add_argument('-hidden_dim', type=int, default=32)
 parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-latent_space', type=t_or_f, default=True)
-parser.add_argument('-logger_lvl', type=str, default='DEBUG')
+parser.add_argument('-logger_lvl', type=str, default='INFO')
 parser.add_argument('-loss', type=none_or_str, default='LMSE')
 parser.add_argument('-load_model', type=t_or_f, default=False)
 parser.add_argument('-loss_step', type=int, default=10)
 parser.add_argument('-log_step', type=int, default=10)
-parser.add_argument('-latent_dim', type=int, default=128)
-parser.add_argument('-lr', type=float, default=1e-4)
+parser.add_argument('-latent_dim', type=int, default=64)
+parser.add_argument('-lr', type=float, default=1e-3)
 parser.add_argument('-make_gif', type=t_or_f, default=False)
 parser.add_argument('-max_latent_nodes', type=int, default = 1768)
-parser.add_argument('-model_file', type=str, default="sst_gvae.pt")
+parser.add_argument('-model_file', type=str, default="model.pt")
 parser.add_argument('-mpl_ratio', type=float, default=0.8)
 parser.add_argument('-mpl_layers', type=int, default=1)
 parser.add_argument('-normalize', type=t_or_f, default=False)
@@ -82,10 +78,11 @@ parser.add_argument('-save_visualize_dir', type=str, default='../logs/visualizat
 parser.add_argument('-shuffle', type=t_or_f, default=True)
 parser.add_argument('-save_plot', type=t_or_f, default=True)
 parser.add_argument('-save_model', type=t_or_f, default=True)
+parser.add_argument('-save_latent', type=t_or_f, default=False)
 parser.add_argument('-save_visual', type=t_or_f, default=True)
 parser.add_argument('-save_losses', type=t_or_f, default=True)
 parser.add_argument('-save_mesh', type=t_or_f, default=True)
-parser.add_argument('-save_plot_dir', type=str, default='plots/'+day)
+parser.add_argument('-save_plot_dir', type=str, default='../logs/plots/'+day)
 parser.add_argument('-train', type=t_or_f, default=True)
 parser.add_argument('-transform', type=t_or_f, default=False)
 parser.add_argument('-transform_p', type=float, default=0.3)
@@ -114,15 +111,16 @@ def main():
 
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
-    dataset = MeshDataset(args=args)
+    train_data = MeshDataset(args=args, mode = 'train')
+    test_data = MeshDataset(args=args, mode = 'test')
+    val_data = MeshDataset(args=args, mode = 'val')
     args.in_dim_node, args.in_dim_edge, args.n_nodes = (
-        dataset[0].num_features,
-        dataset[0].edge_attr.shape[1],
-        dataset[0].x.shape[0]
+        train_data[0].num_features,
+        train_data[0].edge_attr.shape[1],
+        train_data[0].x.shape[0]
     )
-    logger.debug(dataset[0].x.shape)
-    logger.debug(dataset[0].edge_attr.shape)
-    logger.debug(dataset.m_gs[0].shape)
+    m_ids, m_gs, e_s, args.max_latent_nodes = merge_dataset_stats(train_data, test_data, val_data)
+   
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
     # this attribute is also used in encoder ^
@@ -137,8 +135,8 @@ def main():
     # Initialize Model
     if not args.latent_space:
         logger.warning("Model is not going into latent_space")
-    args.max_latent_nodes = dataset.max_latent_nodes
-    model = MultiScaleAutoEncoder(args, dataset.m_ids, dataset.m_gs, dataset.e_s)
+    
+    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s)
     model = model.to(args.device)
     if args.load_model:
         model_path = os.path.join(args.save_model_dir, args.model_file)
@@ -149,23 +147,23 @@ def main():
 
     if args.make_gif:
         logger.success('Making a gif <3')
-        args.model_file = 'gifff'
-        make_gif(model, dataset[:300], args)
+        args.model_file = 'test_full_traj'
+        make_gif(model, gif_data, args)
         logger.success('Made a gif <3')
         exit()
 
     # Initialize optimizer and scheduler(?)
     optimizer = build_optimizer(args, model.parameters())
 
-    dataset = dataset[:250] # The rest of the dataset have little variance
+    #dataset = dataset[:250] # The rest of the dataset have little variance
 
     # Split data into train and test
-    train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
+    # train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
 
     # Split training data into train and validation data
-    train_data, val_data = train_test_split(
-        train_data, test_size=args.val_ratio / (1 - args.test_ratio)
-    )
+    #train_data, val_data = train_test_split(
+    #    train_data, test_size=args.val_ratio / (1 - args.test_ratio)
+    #)
     logger.info(
         f"\n\tTrain size : {len(train_data)}, \n\
         Validation size : {len(val_data)}, \n\
@@ -177,7 +175,7 @@ def main():
     )
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
-    logger.error(f'test loader: {next(iter(test_loader))}')
+    logger.success(f'All data loaded')
     # TRAINING
     train_losses, val_losses, model = train(
         model=model,
@@ -207,7 +205,6 @@ def main():
             torch.save(pair_list, pair_list_file)
             # deleting to save memory
             del pair_list
-    
     
     if args.save_plot:
         loss_name = "loss_" + args.time_stamp
