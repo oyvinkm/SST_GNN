@@ -6,9 +6,12 @@
 #SBATCH -p gpu --gres=gpu:titanrtx:2
 #We expect that our program should not run longer than 1 hours
 #Note that a program will be killed once it exceeds this time!
-#SBATCH --time=1:00:00
+#SBATCH --time=48:00:00
 
 #your script, in this case: write the hostname and the ids of the chosen gpus.
+echo ""
+echo "============== RUNNING DUAL LATENT SPACE =============="
+echo ""
 echo $CUDA_VISIBLE_DEVICES
 ./setup.sh
 # python run.py

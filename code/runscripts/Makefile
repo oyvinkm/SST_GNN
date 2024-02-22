@@ -1,11 +1,9 @@
 clean:
 	@rm -f ../slurm_out/*.out
 
-dual_run:
+run:
 	@sbatch dual_latent.sh
 
-latent_run:
-	@sbatch dual_edges.sh
 
 # If we dont want to wait for the queue and we don't need any major ressources
 _run:

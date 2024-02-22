@@ -172,10 +172,10 @@ def main():
     )
     # Create Dataloaders for train, test and validation
     train_loader = DataLoader(
-        train_data[:5], batch_size=args.batch_size, shuffle=args.shuffle
+        train_data[:4000], batch_size=args.batch_size, shuffle=args.shuffle
     )
-    val_loader = DataLoader(val_data[:5], batch_size=1, shuffle=False)
-    test_loader = DataLoader(test_data[:5], batch_size=1, shuffle=False)
+    val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     logger.success(f'All data loaded')
     # TRAINING
     train_losses, val_losses, model = train(

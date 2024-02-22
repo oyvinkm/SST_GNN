@@ -45,24 +45,28 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch_counter = manager.counter(total=len(train_loader), desc="Batches", unit="Batches", color="blue", leave=False, position=True)
         total_loss = 0
         model.train()
+        logger.debug(f'======= TRAINING =======')
         for idx, batch in enumerate(train_loader):
             if args.progress_bar:
                 batch_counter.update()
             # data = transform(batch).to(args.device)
             # Note that normalization must be done before it's called. The unnormalized
             # data needs to be preserved in order to correctly calculate the loss
+            optimizer.zero_grad()  # zero gradients each time
             batch = batch.to(args.device)
             batch.x = F.normalize(batch.x)
             batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
-            optimizer.zero_grad()  # zero gradients each time
             logger.debug(f'{b_data=}')
             pred, (kl_nodes, kl_edges) = model(b_data)
+            
             rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
             rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
             # Loss KL Loss Node + alpha(KL Loss Edge)
             loss = (beta*kl_nodes + rec_loss_node) + alpha*(beta*kl_edges + rec_loss_edge)
+            if idx % 1000 == 0:
+                logger.info(f'Epoch {epoch}{idx} {rec_loss_edge=} {rec_loss_node=} {loss=}')
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -104,6 +108,7 @@ def validate(model, val_loader, criterion, epoch, args):
     """
     total_loss = 0
     model.eval()
+    logger.debug(f'======= VALIDATING =======')
     for idx, batch in enumerate(val_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
