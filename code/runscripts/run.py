@@ -7,6 +7,7 @@ import warnings
 import copy
 from datetime import datetime
 import torch
+import json
 from loguru import logger
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import ParameterGrid
@@ -38,6 +39,7 @@ day = datetime.now().strftime("%d-%m-%y")
 parser = argparse.ArgumentParser()
 parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-ae_layers', type=int, default=2)
+parser.add_argument('-load_args', type=none_or_str, default=None)
 parser.add_argument('-batch_size', type=int, default=16)
 parser.add_argument('-data_dir', type=str, default='../data/cylinder_flow/trajectories_1768')
 parser.add_argument('-epochs', type=int, default=1)
@@ -108,6 +110,21 @@ def main():
         args.device = "cpu"
     logger.info(f"Device : {args.device}")
     logger.debug(f'SAVE_MODEL : {args.save_model_dir}')
+    if args.load_args is not None:
+        logger.info(f'ARGS FILE IS FILE: {os.path.isfile(args.load_args)}')
+
+    if args.load_args is not None:
+        try:
+            if os.path.isfile(args.load_args):
+                with open(args.load_args, 'r') as f:
+                    args_dict = json.loads(f.read())
+                    for k, v in args_dict.items():
+                        if k in ['load_model', 'ae_layers']:
+                            continue
+                        args.__dict__[k] = v
+                logger.success(f'Args loaded from {args.load_args}')
+        except:
+            logger.error(f'unable to load arguments from {args.load_args}, will continue with:\n{args}')
 
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
@@ -139,11 +156,14 @@ def main():
     model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, e_as)
     model = model.to(args.device)
     if args.load_model:
-        model_path = os.path.join(args.save_model_dir, args.model_file)
-        logger.info("Loading model")
-        assert os.path.isfile(model_path), f"can't find model file at: {model_path}"
-        model.load_state_dict(torch.load(model_path))
-        logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
+        try:
+            model_path = os.path.join(args.save_model_dir, args.model_file)
+            logger.info("Loading model")
+            assert os.path.isfile(model_path), f"can't find model file at: {model_path}"
+            model.load_state_dict(torch.load(model_path))
+            logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
+        except:
+            logger.error(f'Unable to load model, will start from scratch')
 
     if args.make_gif:
         logger.success('Making a gif <3')
