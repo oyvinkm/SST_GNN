@@ -10,7 +10,6 @@ python run.py \
     -epochs 10 \
     -ae_layers 3 \
     -hidden_dim 64 \
-    -logger_lvl DEBUG \
     -loss LMSE \
     -alpha 1. \
     -save_plot True \

@@ -99,21 +99,21 @@ class Encoder(nn.Module):
             logger.debug(f'{e_t.shape=}')
 
             # Sampling latent vector for nodes and calculating KL-divergence
-            mu_nodes = self.mlp_mu_nodes(x_t)
-            log_var_nodes = self.mlp_logvar_nodes(x_t)
+            mu_nodes = self.mlp_mu_nodes(x_t).transpose(1,2)
+            log_var_nodes = self.mlp_logvar_nodes(x_t).transpose(1,2)
             z_nodes = self.sample(mu_nodes, log_var_nodes)
             kl_nodes = torch.mean(-0.5 * torch.sum(1+log_var_nodes-mu_nodes**2-log_var_nodes.exp(), dim=1), dim=0)
 
             # Sampling latent vector for nodes and calculating KL-divergence
-            mu_edges = self.mlp_mu_edges(e_t)
+            mu_edges = self.mlp_mu_edges(e_t).transpose(1,2)
             if self.args.dual_loss:
-                log_var_edges = self.mlp_logvar_edges(e_t)
+                log_var_edges = self.mlp_logvar_edges(e_t).transpose(1,2)
                 z_edges = self.sample(mu_edges, log_var_edges)
                 kl_edges = torch.mean(-0.5 * torch.sum(1+log_var_edges-mu_edges**2-log_var_edges.exp(), dim=1), dim=0)
             else:
                 z_edges = mu_edges
                 kl_edges = None
-            return (kl_edges, kl_nodes), (z_nodes, z_edges), b_data
+            return (kl_nodes, kl_edges), (z_nodes, z_edges), b_data
 
         else:
             x_t, e_t = self.batch_to_dense_transpose(b_data)

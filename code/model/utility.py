@@ -513,7 +513,6 @@ class LatentVecLayer(nn.Module):
         #return self.act(x).transpose(1,2)
         
     
-    @torch.no_grad()
     def batch_to_dense_transpose(self, b_data):
         data_lst = Batch.to_data_list(b_data)
         x_lst = []
