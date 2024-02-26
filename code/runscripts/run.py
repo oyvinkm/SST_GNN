@@ -38,6 +38,7 @@ day = datetime.now().strftime("%d-%m-%y")
 parser = argparse.ArgumentParser()
 parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-ae_layers', type=int, default=2)
+parser.add_argument('-alpha', type=float, default=0.5)
 parser.add_argument('-batch_size', type=int, default=16)
 parser.add_argument('-data_dir', type=str, default='../data/cylinder_flow/trajectories_1768')
 parser.add_argument('-epochs', type=int, default=1)
@@ -140,11 +141,12 @@ def main():
     model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s)
     model = model.to(args.device)
     if args.load_model:
-        model_path = os.path.join(args.save_model_dir, args.model_file)
         logger.info("Loading model")
-        assert os.path.isfile(model_path), f"can't find model file at: {model_path}"
-        model.load_state_dict(torch.load(model_path))
-        logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
+        try:
+            model.load_state_dict(torch.load(args.model_file))
+            logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
+        except:
+            logger.error(f'Unable to load model from {args.model_file}')
 
     if args.make_gif:
         logger.success('Making a gif <3')

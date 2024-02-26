@@ -14,6 +14,12 @@ from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree, coalesce,to_dense_adj, contains_isolated_nodes
 from torch_scatter import scatter
 
+
+
+
+
+def collapse
+
 def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
     r"""Pools the edges of a graph to a new set of edges using the idxHR_to_idxLR mapping.
 
@@ -451,6 +457,38 @@ class ProcessorLayer(MessagePassing):
         return out, updated_edges
 
 
+class LatentVecLayer(nn.Module):
+    def __init__(self, hidden_dim, latent_dim = 128, max_nodes):
+        self.hidden_dim = hidden_dim 
+        self.latent_dim = latent_dim
+        self.max_nodes = max_nodes
+
+        self.hidden_dim_mlp = Sequential(Linear(self.hidden_dim, self.hidden_dim // 2),
+                              ReLU(),
+                              Linear(self.hidden_dim // 2, 1),
+                              LayerNorm(1)
+                              )
+
+    def forward(self, b_data, x):
+        # Store b_data to transpoes each latent vec in batch
+        b_data = b_data.clone()
+        # Reduce hidden dimensions to 1 for each node 
+        b_data.x = self.hidden_dim_mlp(x)
+        # Transpose 
+        x = batch_to_dense_transpose(b_data)
+        # Reduce to latent_dim
+        
+        # Return latent vector
+    
+    @torch.no_grad()
+    def batch_to_dense_transpose(self, b_data):
+        data_lst = Batch.to_data_list(b_data)
+        x_lst
+        for b in data_lst:
+            x_lst.append(b.x.T)
+        return torch.stack(x_lst)
+
+
 class Unpool(nn.Module):
     """
     Fills an empty array
@@ -463,6 +501,9 @@ class Unpool(nn.Module):
         new_h = h.new_zeros([pre_node_num, h.shape[-1]])
         new_h[idx] = h
         return new_h
+
+
+
 
 
 #################### Direction training ##########################

@@ -139,6 +139,7 @@ class Encoder(nn.Module):
             data_lst.append(data)
         return Batch.from_data_list(data_lst).to(self.args.device)
     
+    @torch.no_grad()
     def batch_to_dense_transpose(self, b_data):
         data_lst = Batch.to_data_list(b_data)
         b_node_lst = []

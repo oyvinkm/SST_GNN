@@ -10,11 +10,15 @@ python run.py \
     -epochs 10 \
     -ae_layers 3 \
     -hidden_dim 64 \
-    -latent_dim 128 \
+    -loss MSE \
+    -alpha 1. \
+    -save_plot True \
+    -latent_dim 256 \
     -batch_size 4 \
     -mpl_layers 2 \
-    -lr 1e-4 \
+    -lr 1e-5 \
     -loss_step 1 \
     -log_step 1 \
-    -make_gif False \
-    -load_model False \
+    #-load_model True \
+    #-model_file ../logs/model_chkpoints/25-02-24/model_2024_02_25-16.25/model.pt \
+    #-make_gif True \

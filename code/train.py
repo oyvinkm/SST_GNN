@@ -26,8 +26,12 @@ def train(model, train_loader, val_loader, optimizer, args):
     """
     model = model.to(args.device)
 
-
-    criterion = LMSELoss()
+    if args.loss == 'LMSE':
+        criterion = LMSELoss()
+        logger.info(f'Loss is LMSE')
+    else:
+        criterion = MSELoss()
+        logger.info(f'Loss is MSE')
 
     train_losses = []
     val_losses = []
@@ -64,7 +68,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
             rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
             # Loss KL Loss Node + alpha(KL Loss Edge)
-            loss = (beta*kl_nodes + rec_loss_node) + alpha*(beta*kl_edges + rec_loss_edge)
+            loss = (beta*kl_nodes + rec_loss_node) + args.alpha*(beta*kl_edges + rec_loss_edge)
             if idx % 1000 == 0:
                 logger.info(f'Epoch {epoch}{idx} {rec_loss_edge=} {rec_loss_node=} {loss=}')
             loss.backward()  # backpropagate loss
@@ -121,7 +125,7 @@ def validate(model, val_loader, criterion, epoch, args):
         pred, _ = model(b_data, Train=False)
         rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
         rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
-        loss = rec_loss_node + 0.5*rec_loss_edge
+        loss = rec_loss_node + args.alpha*rec_loss_edge
         total_loss += loss.item()
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
