@@ -482,19 +482,20 @@ class LatentVecLayer(nn.Module):
         # Store b_data to transpoes each latent vec in batch
         if self.type == 'edge':
             b_data = b_data.clone()
-            x = b_data.edge_attr
-            logger.debug(f'working on edges : {x.shape}')
+            edge_attr = b_data.edge_attr
+            logger.debug(f'working on edges : {edge_attr.shape}')
             # Reduce hidden dimensions to 1 for each node 
             
-            b_data.edge_attr = self.hidden_dim_mlp(x)
+            b_data.edge_attr = self.hidden_dim_mlp(edge_attr)
             # Transpose 
             logger.debug(f'after hidden_mlp {b_data.edge_attr.shape}')
-            x = self.batch_to_dense_transpose(b_data)
+            edge_attr = self.batch_to_dense_transpose(b_data)
             # Reduce to latent_dim
-            logger.debug(f'After transpose: {x.shape}')
-            x = self.latent_dim_mlp(x)
+            edge_attr = self.latent_dim_mlp(edge_attr)
+            logger.debug(f'After latent: {edge_attr.shape}')
             # Return latent vector on shape (B, Latent_dim , 1)
-            return self.act(x).transpose(1,2)
+            return self.act(edge_attr)
+            #return self.act(edge_attr).transpose(1,2)
         
         b_data = b_data.clone()
         x = b_data.x
@@ -504,11 +505,12 @@ class LatentVecLayer(nn.Module):
         logger.debug(f'after hidden_mlp {b_data.x.shape}')
         # Transpose 
         x = self.batch_to_dense_transpose(b_data)
-        logger.debug(f'After transpose: {x.shape}')
         # Reduce to latent_dim
         x = self.latent_dim_mlp(x)
+        logger.debug(f'After latent: {x.shape}')
         # Return latent vector
-        return self.act(x).transpose(1,2)
+        return self.act(x)
+        #return self.act(x).transpose(1,2)
         
     
     @torch.no_grad()

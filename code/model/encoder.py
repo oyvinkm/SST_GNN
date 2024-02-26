@@ -65,29 +65,21 @@ class Encoder(nn.Module):
         #                 Linear(64, self.zip_dim))
 
         #self.mlp_mu = Sequential(Linear(self.zip_dim*2, 1))
-        self.mlp_mu_nodes = Sequential(Linear(self.latent_node_dim, 64),
+        self.mlp_mu_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
                               ReLU(),
-                              Linear(64, 1),
-                              LayerNorm(1)
+                              LayerNorm(self.latent_dim)
                               )
-        self.mlp_logvar_nodes = Sequential(Linear(self.latent_node_dim, 64),
+        self.mlp_logvar_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
                               ReLU(),
-                              Linear(64, 1),
-                              LayerNorm(1)
+                              LayerNorm(self.latent_dim)
                               )
-        self.mlp_mu_edges = Sequential(Linear(self.latent_edge_dim, self.latent_edge_dim // 2),
+        self.mlp_mu_edges = Sequential(Linear(self.latent_dim, self.latent_dim),
                               ReLU(),
-                              Linear(self.latent_edge_dim//2, 64),
-                              ReLU(),
-                              Linear(64, 1),
-                              LayerNorm(1)
+                              LayerNorm(self.latent_dim)
                               ) 
-        self.mlp_logvar_edges = Sequential(Linear(self.latent_edge_dim, self.latent_edge_dim // 2),
+        self.mlp_logvar_edges = Sequential(Linear(self.latent_dim, self.latent_dim),
                               ReLU(),
-                              Linear(self.latent_edge_dim//2, 64),
-                              ReLU(),
-                              Linear(64, 1),
-                              LayerNorm(1)
+                              LayerNorm(self.latent_dim)
                               ) 
 
     def forward(self, b_data, Train = True):
@@ -99,25 +91,28 @@ class Encoder(nn.Module):
         b_data = self.bottom_layer(b_data) #
         b_data = self.pad_nodes_edges(b_data)
         if Train:
+            # Obtaining latent vectors for nodes and edge_attributes
             x_t = self.node_latent_mlp(b_data)
-            logger.debug(f'Latent nodes : {x_t.shape}')
             e_t = self.edge_latent_mlp(b_data)
-            logger.debug(f'Latent edges : {e_t.shape}')
-            z_nodes = x_t
-            z_edges = e_t
-            kl_nodes = 0.5
-            kl_edges = 0.5
-            # x_t, e_t = self.batch_to_dense_transpose(b_data)
-            # mu_nodes = self.mlp_mu_nodes(x_t)
-            # log_var_nodes = self.mlp_logvar_nodes(x_t)
-            # logger.debug(f'Transposed : {x_t.shape}')
-            # z_nodes = self.sample(mu_nodes, log_var_nodes)
-            # kl_nodes = torch.mean(-0.5 * torch.sum(1+log_var_nodes-mu_nodes**2-log_var_nodes.exp(), dim=1), dim=0)
-            # mu_edges = self.mlp_mu_edges(e_t)
-            # log_var_edges = self.mlp_logvar_edges(e_t)
-            # z_edges = self.sample(mu_edges, log_var_edges)
-            # kl_edges = torch.mean(-0.5 * torch.sum(1+log_var_edges-mu_edges**2-log_var_edges.exp(), dim=1), dim=0)
-            # logger.debug(f'{z_nodes.shape}, {z_edges.shape}')
+            #x_t, e_t = self.batch_to_dense_transpose(b_data)
+            logger.debug(f'{x_t.shape=}')
+            logger.debug(f'{e_t.shape=}')
+
+            # Sampling latent vector for nodes and calculating KL-divergence
+            mu_nodes = self.mlp_mu_nodes(x_t)
+            log_var_nodes = self.mlp_logvar_nodes(x_t)
+            z_nodes = self.sample(mu_nodes, log_var_nodes)
+            kl_nodes = torch.mean(-0.5 * torch.sum(1+log_var_nodes-mu_nodes**2-log_var_nodes.exp(), dim=1), dim=0)
+
+            # Sampling latent vector for nodes and calculating KL-divergence
+            mu_edges = self.mlp_mu_edges(e_t)
+            if self.args.dual_loss:
+                log_var_edges = self.mlp_logvar_edges(e_t)
+                z_edges = self.sample(mu_edges, log_var_edges)
+                kl_edges = torch.mean(-0.5 * torch.sum(1+log_var_edges-mu_edges**2-log_var_edges.exp(), dim=1), dim=0)
+            else:
+                z_edges = mu_edges
+                kl_edges = None
             return (kl_edges, kl_nodes), (z_nodes, z_edges), b_data
 
         else:

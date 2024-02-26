@@ -64,13 +64,14 @@ def train(model, train_loader, val_loader, optimizer, args):
             # b_data = augment_batch(b_data)
             logger.debug(f'{b_data=}')
             pred, (kl_nodes, kl_edges) = model(b_data)
-            
-            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-            rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
-            # Loss KL Loss Node + alpha(KL Loss Edge)
-            loss = (beta*kl_nodes + rec_loss_node) + args.alpha*(beta*kl_edges + rec_loss_edge)
-            if idx % 1000 == 0:
-                logger.info(f'Epoch {epoch}{idx} {rec_loss_edge=} {rec_loss_node=} {loss=}')
+            if args.dual_loss:
+                rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+                rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+                # Loss KL Loss Node + alpha(KL Loss Edge)
+                loss = (beta*kl_nodes + rec_loss_node) + args.alpha*(beta*kl_edges + rec_loss_edge)
+            else:
+                rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+                loss = beta*kl_nodes + rec_loss_node
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -112,7 +113,9 @@ def validate(model, val_loader, criterion, epoch, args):
     """
     total_loss = 0
     model.eval()
+
     logger.debug(f'======= VALIDATING =======')
+    rand_idx = randint(0, len(val_loader)-1)
     for idx, batch in enumerate(val_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
@@ -127,7 +130,7 @@ def validate(model, val_loader, criterion, epoch, args):
         rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node + args.alpha*rec_loss_edge
         total_loss += loss.item()
-        if idx == 0 and args.save_mesh:
+        if idx == rand_idx and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
     total_loss /= idx
     return total_loss

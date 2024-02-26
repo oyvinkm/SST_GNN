@@ -10,10 +10,11 @@ python run.py \
     -epochs 10 \
     -ae_layers 3 \
     -hidden_dim 64 \
-    -loss MSE \
+    -logger_lvl DEBUG \
+    -loss LMSE \
     -alpha 1. \
     -save_plot True \
-    -latent_dim 256 \
+    -latent_dim 128 \
     -batch_size 4 \
     -mpl_layers 2 \
     -lr 1e-5 \
