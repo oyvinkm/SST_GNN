@@ -8,17 +8,18 @@ from matplotlib import pyplot as plt
 from torch import nn
 from functools import wraps
 from loguru import logger
-from torch.nn import LayerNorm, Linear, ReLU, Sequential
+from torch_geometric.data import Batch
+from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import degree, coalesce,to_dense_adj, contains_isolated_nodes
+from torch_geometric.utils import degree, coalesce,to_dense_adj
 from torch_scatter import scatter
 
 
 
 
 
-def collapse
+
 
 def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
     r"""Pools the edges of a graph to a new set of edges using the idxHR_to_idxLR mapping.
@@ -458,34 +459,67 @@ class ProcessorLayer(MessagePassing):
 
 
 class LatentVecLayer(nn.Module):
-    def __init__(self, hidden_dim, latent_dim = 128, max_nodes):
+    def __init__(self, hidden_dim, latent_dim, max_dim, type):
+        super(LatentVecLayer, self).__init__()
         self.hidden_dim = hidden_dim 
         self.latent_dim = latent_dim
-        self.max_nodes = max_nodes
+        self.max_dim = max_dim
+        self.type = type
 
         self.hidden_dim_mlp = Sequential(Linear(self.hidden_dim, self.hidden_dim // 2),
                               ReLU(),
                               Linear(self.hidden_dim // 2, 1),
                               LayerNorm(1)
                               )
+        self.latent_dim_mlp = Sequential(Linear(self.max_dim, self.max_dim // 2),
+                              ReLU(),
+                              Linear(self.max_dim // 2, self.latent_dim),
+                              LayerNorm(self.latent_dim)
+                              )
+        self.act = LeakyReLU()
 
-    def forward(self, b_data, x):
+    def forward(self, b_data):
         # Store b_data to transpoes each latent vec in batch
+        if self.type == 'edge':
+            b_data = b_data.clone()
+            x = b_data.edge_attr
+            logger.debug(f'working on edges : {x.shape}')
+            # Reduce hidden dimensions to 1 for each node 
+            
+            b_data.edge_attr = self.hidden_dim_mlp(x)
+            # Transpose 
+            logger.debug(f'after hidden_mlp {b_data.edge_attr.shape}')
+            x = self.batch_to_dense_transpose(b_data)
+            # Reduce to latent_dim
+            logger.debug(f'After transpose: {x.shape}')
+            x = self.latent_dim_mlp(x)
+            # Return latent vector on shape (B, Latent_dim , 1)
+            return self.act(x).transpose(1,2)
+        
         b_data = b_data.clone()
+        x = b_data.x
+        logger.debug(f'working on nodes : {x.shape}')
         # Reduce hidden dimensions to 1 for each node 
         b_data.x = self.hidden_dim_mlp(x)
+        logger.debug(f'after hidden_mlp {b_data.x.shape}')
         # Transpose 
-        x = batch_to_dense_transpose(b_data)
+        x = self.batch_to_dense_transpose(b_data)
+        logger.debug(f'After transpose: {x.shape}')
         # Reduce to latent_dim
-        
+        x = self.latent_dim_mlp(x)
         # Return latent vector
+        return self.act(x).transpose(1,2)
+        
     
     @torch.no_grad()
     def batch_to_dense_transpose(self, b_data):
         data_lst = Batch.to_data_list(b_data)
-        x_lst
+        x_lst = []
         for b in data_lst:
-            x_lst.append(b.x.T)
+            if self.type == 'edge':
+                x_lst.append(b.edge_attr.T)
+            else:
+                x_lst.append(b.x.T)
         return torch.stack(x_lst)
 
 
