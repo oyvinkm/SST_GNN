@@ -1,29 +1,113 @@
 
 import torch
 import random
-from torch_geometric.loader import DataLoader
 import numpy as np
 import pandas as pd
 import os
 import json
 import numpy as np
 import torch
-
 import random
+import re
+import networkx as nx
+
+from loguru import logger
+from torch_geometric.loader import DataLoader
 from typing import Optional, Union
 from torch_geometric.data import Data
+from torch_geometric.utils import to_networkx
 from .normalization import get_stats
 from .triangle_to_edges import triangles_to_edges, NodeType
 import h5py
 import tensorflow as tf
 
 
-# OS: 
-# 'Linux' : Linux
-# 'Darwin' : MacOS
-# 'Windows' : 
+def find_max_degree_of_graph(graph):
+  return max(graph.degree, key=lambda x: x[1])[1]
+
+def get_traj_edge_attr(graph, max_degree):
+  node_attributes = nx.get_node_attributes(graph, 'x')
+  num_node_attr = len(node_attributes[1])
+  node_features = torch.zeros((graph.number_of_nodes(), max_degree*3))
+  for idx, n in enumerate(graph.nodes):
+    edge_attr = torch.flatten(torch.tensor([attr['edge_attr'] for _, _, attr in list(graph.edges(1, data = True))]))
+    node_features[idx][:len(edge_attr)] = edge_attr
+  return node_features
+      
+def create_traj_node_attr_dict(train, test, val, max_degree):
+  train_trajs = set(map(lambda str : re.search('\d+', str).group(), os.listdir(train)))
+  val_trajs = set(map(lambda str : re.search('\d+', str).group(), os.listdir(val)))
+  test_trajs = set(map(lambda str : re.search('\d+', str).group(), os.listdir(test)))
+  new_nodes_traj = {}
+  for t in train_trajs:
+    f = next(filter(lambda str : str.startswith(t), os.listdir(train)))
+    g = torch.load(os.path.join(train, f))
+    graph = to_networkx(g, node_attrs=['x'], edge_attrs=['edge_attr'])
+    new_nodes_traj[t] = get_traj_edge_attr(graph, max_degree)
+  for t in val_trajs:
+    f = next(filter(lambda str : str.startswith(t), os.listdir(val)))
+    g = torch.load(os.path.join(val, f))
+    graph = to_networkx(g, node_attrs=['x'], edge_attrs=['edge_attr'])
+    new_nodes_traj[t] = get_traj_edge_attr(graph, max_degree)
+  for t in test_trajs:
+    f = next(filter(lambda str : str.startswith(t), os.listdir(test)))
+    g = torch.load(os.path.join(test, f))
+    graph = to_networkx(g, node_attrs=['x'], edge_attrs=['edge_attr'])
+    new_nodes_traj[t] = get_traj_edge_attr(graph, max_degree)
+  return new_nodes_traj
+
+def max_degree_of_dataset(train, test, val):
+  train_trajs = set(map(lambda str : re.search('\d+', str).group(), os.listdir(train)))
+  val_trajs = set(map(lambda str : re.search('\d+', str).group(), os.listdir(val)))
+  test_trajs = set(map(lambda str : re.search('\d+', str).group(), os.listdir(test)))
+  max_degree = 0
+  
+  for t in train_trajs:
+    f = next(filter(lambda str : str.startswith(t), os.listdir(train)))
+    g = torch.load(os.path.join(train, f))
+    graph = to_networkx(g, node_attrs=['x'], edge_attrs=['edge_attr'])
+    max = find_max_degree_of_graph(graph)
+    if max > max_degree: max_degree = max
+
+  for t in val_trajs:
+    f = next(filter(lambda str : str.startswith(t), os.listdir(val)))
+    g = torch.load(os.path.join(val, f))
+    graph = to_networkx(g, node_attrs=['x'], edge_attrs=['edge_attr'])
+    max = find_max_degree_of_graph(graph)
+    if max > max_degree: max_degree = max
+  for t in test_trajs:
+    f = next(filter(lambda str : str.startswith(t), os.listdir(test)))
+    g = torch.load(os.path.join(test, f))
+    graph = to_networkx(g, node_attrs=['x'], edge_attrs=['edge_attr'])
+    max = find_max_degree_of_graph(graph)
+    if max > max_degree: max_degree = max
+  return max
 
 
+
+
+def find_and_replace(file, traj, new_nodes):
+   g = torch.load(file)
+   g.x = torch.cat((g.x, new_nodes[traj]), dim = 1)
+   torch.save(g, file)
+
+def extend_node_attributes(data_dir = 'data/cylinder_flow', 
+                           trajectories = 'trajectories_1768'):
+  folder = os.path.join(data_dir, trajectories)
+  train_dir = os.path.join(folder, 'train')
+  val_dir = os.path.join(folder, 'val')
+  test_dir = os.path.join(folder, 'test')
+  max_degree = max_degree_of_dataset(train_dir, test_dir, val_dir)
+  new_node_attr = create_traj_node_attr_dict(train_dir, test_dir, val_dir, max_degree)
+  for f in os.listdir(train_dir):
+    t = re.search('\d+', f).group()
+    find_and_replace(os.path.join(train_dir, f), t, new_node_attr)
+  for f in os.listdir(val_dir):
+    t = re.search('\d+', f).group()
+    find_and_replace(os.path.join(val_dir, f), t, new_node_attr)
+  for f in os.listdir(test_dir):
+    t = re.search('\d+', f).group()
+    find_and_replace(os.path.join(test_dir, f), t, new_node_attr)  
 
 
 def load_preprocessed(args):
@@ -192,7 +276,8 @@ def load_trajectories(filename, trajectories, save = False, save_folder = None):
                 
             #node_type = torch.tensor(np.array(data[trajectory]['node_type'][ts]))
             tmp = tf.convert_to_tensor(data[trajectory]['node_type'][0])
-            node_type = torch.tensor(np.array(tf.one_hot(tf.convert_to_tensor(data[trajectory]['node_type'][0]), NodeType.SIZE))).squeeze(1)
+            converted_node_type = np.array([nt - 3 if nt > 0 else nt for nt in data[trajectory]['node_type'][0]])
+            node_type = torch.tensor(np.array(tf.one_hot(tf.convert_to_tensor(converted_node_type), NodeType.SIZE))).squeeze(1)
             x = torch.cat((momentum,node_type),dim=-1).type(torch.float)
             if ts == 0: print(f'Num nodes trajectory {trajectory} : {x.shape[0]}')
 

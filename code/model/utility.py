@@ -115,9 +115,11 @@ class GCNConv(MessagePassing):
         super(GCNConv, self).__init__(aggr="add")  # "Add" aggregation.
         self.lin = torch.nn.Linear(in_channels, out_channels)
 
-    def forward(self, x, edge_index):
+    def forward(self, b_data):
         # x has shape [num_nodes, in_channels]
         # edge_index has shape [2, E]
+        x = b_data.x
+        edge_index = b_data.edge_index
 
         # Step 1: Add self-loops to the adjacency matrix.
         # Step 2: Linearly transform node feature matrix.
@@ -142,6 +144,39 @@ class GCNConv(MessagePassing):
 
         # Step 5: Return new node embeddings.
         return aggr_out
+
+class MessagePassingBlock(torch.nn.Module):
+    """
+    Just combines n number of message passing layers
+    """
+
+    def __init__(self, channel_in, channel_out, args, num_blocks=None):
+        super(MessagePassingBlock, self).__init__()
+        if num_blocks is None:
+            self.num_blocks = args.num_blocks
+        else:
+            self.num_blocks = num_blocks
+        self.channel_in = channel_in
+        self.channel_out = channel_out
+        self.processor = nn.ModuleList()
+        assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
+        
+        processor_layer = self.build_processor_model()
+        for i in range(self.num_blocks):
+            if i == 0:
+                self.processor.append(processor_layer(self.channel_in, self.channel_out))
+            else:
+                self.processor.append(processor_layer(self.channel_out, self.channel_out))
+
+    def build_processor_model(self):
+        return GCNConv
+
+    def forward(self, b_data):
+        # Step 1: encode node/edge features into latent node/edge embeddings
+        # step 2: perform message passing with latent node/edge embeddings
+        for i in range(self.num_blocks):
+            b_data.x = self.processor[i](b_data)
+        return b_data
 
 class WeightedEdgeConv(MessagePassing):
     """
@@ -184,38 +219,8 @@ class WeightedEdgeConv(MessagePassing):
         ec = w_to_send / aggr_w[j]
         return ec, aggr_w
 
-class MessagePassingBlock(torch.nn.Module):
-    """
-    Just combines n number of message passing layers
-    """
 
-    def __init__(self, channel_in, channel_out, args, num_blocks=None):
-        super(MessagePassingBlock, self).__init__()
-        if num_blocks is None:
-            self.num_blocks = args.num_blocks
-        else:
-            self.num_blocks = num_blocks
-        self.channel_in = channel_in
-        self.channel_out = channel_out
-        self.processor = nn.ModuleList()
-        assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
-        
-        processor_layer = self.build_processor_model()
-        for i in range(self.num_blocks):
-            if i == 0:
-                self.processor.append(processor_layer(self.channel_in, self.channel_out))
-            else:
-                self.processor.append(processor_layer(self.channel_out, self.channel_out))
-
-    def build_processor_model(self):
-        return ProcessorLayer
-
-    def forward(self, b_data):
-        # Step 1: encode node/edge features into latent node/edge embeddings
-        # step 2: perform message passing with latent node/edge embeddings
-        for i in range(self.num_blocks):
-            b_data = self.processor[i](b_data)
-        return b_data
+    
 
 class MessagePassingLayer(torch.nn.Module):
     """
@@ -290,7 +295,7 @@ class MessagePassingLayer(torch.nn.Module):
         for i in range(self.l_n):
             """ h = b_data.x
             g = b_data.edge_index """
-            # This should return x, edge_attr
+            # This should return x as we're using GCNConv
             b_data = self.down_gmps[i](b_data)
             # record the infor before aggregation
             down_outs.append(b_data.x)
@@ -319,14 +324,15 @@ class MessagePassingLayer(torch.nn.Module):
                 b_data.edge_attr = edge_attr
                 b_data.batch = batch
                 b_data.weights = b_data.weights[index]
-            else:
-                x, edge_index, edge_attr, batch, index, _ = self.pools[i](
-                    b_data.x, b_data.edge_index, b_data.edge_attr, b_data.batch
+            else: 
+                # Removed edge_attr with _
+                x, edge_index, _, batch, index, _ = self.pools[i](
+                    x = b_data.x, edge_index = b_data.edge_index, batch = b_data.batch
                 )
                 down_masks.append(index)
                 b_data.x = x
                 b_data.edge_index = edge_index
-                b_data.edge_attr = edge_attr
+                # b_data.edge_attr = edge_attr
                 b_data.batch = batch
                 b_data.weights = b_data.weights[index]
         b_data = self.bottom_gmp(b_data)
@@ -346,7 +352,7 @@ class MessagePassingLayer(torch.nn.Module):
             b_data.batch = batches[up_idx]
             # Skip connection weights
             b_data.weights = ws[up_idx]
-            b_data.edge_attr = attr[up_idx]
+            # b_data.edge_attr = attr[up_idx]
             b_data = self.up_gmps[i](b_data)
             b_data.x = b_data.x.add(down_outs[up_idx])
             #b_data.x = h
