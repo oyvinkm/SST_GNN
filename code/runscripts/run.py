@@ -9,7 +9,8 @@ from datetime import datetime
 import torch
 from loguru import logger
 from torch_geometric.loader import DataLoader
-from sklearn.model_selection import ParameterGrid
+from sklearn.model_selection import ParameterGrid, train_test_split
+
 from random import choice
 sys.path.append('../')
 sys.path.append('dataprocessing')
@@ -163,12 +164,12 @@ def main():
     #dataset = dataset[:250] # The rest of the dataset have little variance
 
     # Split data into train and test
-    # train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
+    train_data, test_data = train_test_split(val_data, test_size=args.test_ratio)
 
     # Split training data into train and validation data
-    #train_data, val_data = train_test_split(
-    #    train_data, test_size=args.val_ratio / (1 - args.test_ratio)
-    #)
+    train_data, val_data = train_test_split(
+       train_data, test_size=args.val_ratio / (1 - args.test_ratio)
+    )
     logger.info(
         f"\n\tTrain size : {len(train_data)}, \n\
         Validation size : {len(val_data)}, \n\
@@ -176,7 +177,7 @@ def main():
     )
     # Create Dataloaders for train, test and validation
     train_loader = DataLoader(
-        train_data[:4000], batch_size=args.batch_size, shuffle=args.shuffle
+        train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)

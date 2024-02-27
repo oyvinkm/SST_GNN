@@ -7,16 +7,17 @@ day="$(date +"%d-%m-%y")"
 prefix="../logs"
 export TF_ENABLE_ONEDNN_OPTS=0
 python run.py \
-    -epochs 10 \
+    -epochs 30 \
     -ae_layers 3 \
-    -hidden_dim 64 \
+    -hidden_dim 128 \
+    -logger_lvl SUCCESS \
     -loss LMSE \
     -alpha 1. \
     -save_plot True \
-    -latent_dim 128 \
+    -latent_dim 256 \
     -batch_size 4 \
     -mpl_layers 2 \
-    -lr 1e-5 \
+    -lr 1e-4 \
     -loss_step 1 \
     -log_step 1 \
     #-load_model True \

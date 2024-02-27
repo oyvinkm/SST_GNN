@@ -61,12 +61,12 @@ class Decoder(nn.Module):
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
         )
-        self.out_edge_encoder = Sequential(
-            Linear(self.hidden_dim, self.hidden_dim // 2),
-            LeakyReLU(),
-            Linear(self.hidden_dim // 2, 3),
-            LayerNorm(3),
-        )
+        # self.out_edge_encoder = Sequential(
+        #     Linear(self.hidden_dim, self.hidden_dim // 2),
+        #     LeakyReLU(),
+        #     Linear(self.hidden_dim // 2, 3),
+        #     LayerNorm(3),
+        # )
 
     # def from_latent_vec(self, z):
     #     z_x, z_e = z
@@ -107,7 +107,7 @@ class Decoder(nn.Module):
            b_data = self.layers[i](b_data)
         b_data = self.final_layer(b_data) #
         b_data.x = self.out_node_decoder(b_data.x) #
-        b_data.edge_attr = self.out_edge_encoder(b_data.edge_attr)
+        # b_data.edge_attr = self.out_edge_encoder(b_data.edge_attr)
         return b_data
     
     

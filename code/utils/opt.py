@@ -11,6 +11,7 @@ def build_optimizer(args, params):
 def Merge(dict1, dict2):
     res = {**dict1, **dict2}
     return res
+
 def merge_dataset_stats(train, val, test):
     train_id, train_g, train_e = train._get_pool()
     test_id, test_g, test_e = test._get_pool()
@@ -29,3 +30,4 @@ def merge_dataset_stats(train, val, test):
     for i in range(len(train_e)):
         e_s.append(Merge(Merge(train_e[i], test_e[i]), val_e[i]))
     return m_ids, m_gs, e_s, max_latent_nodes, max_latent_edges
+

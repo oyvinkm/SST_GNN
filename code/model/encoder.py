@@ -38,11 +38,11 @@ class Encoder(nn.Module):
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
-        self.edge_encoder = Sequential(Linear(self.in_dim_edge , self.hidden_dim),
-                              ReLU(),
-                              Linear( self.hidden_dim, self.hidden_dim),
-                              LayerNorm(self.hidden_dim)
-                              )
+        # self.edge_encoder = Sequential(Linear(self.in_dim_edge , self.hidden_dim),
+        #                       ReLU(),
+        #                       Linear( self.hidden_dim, self.hidden_dim),
+        #                       LayerNorm(self.hidden_dim)
+        #                       )
         for i in range(self.ae_layers):
             
             self.layers.append(Res_down(
@@ -60,14 +60,16 @@ class Encoder(nn.Module):
                                               latent_dim = self.latent_dim, max_dim = self.latent_node_dim, type='node')
         # self.edge_latent_mlp = LatentVecLayer(hidden_dim=self.hidden_dim * 2 ** self.ae_layers,
         #                                       latent_dim = self.latent_dim, max_dim = self.latent_edge_dim, type='edge')
-        self.mlp_mu_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
-                              ReLU(),
-                              LayerNorm(self.latent_dim)
-                              )
+        # self.mlp_mu_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
+        #                       ReLU(),
+        #                       LayerNorm(self.latent_dim)
+        #                       )
+        self.mlp_mu_nodes = Linear(self.latent_dim, self.latent_dim)
         self.mlp_logvar_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
                               ReLU(),
                               LayerNorm(self.latent_dim)
                               )
+        self.mlp_logvar_nodes = Linear(self.latent_dim, self.latent_dim)
         # self.mlp_zip_node = Sequential(Linear(self.latent_vec_dim, 64),
         #                 LeakyReLU(),
         #                 Linear(64, self.zip_dim))
@@ -100,7 +102,7 @@ class Encoder(nn.Module):
 
     def forward(self, b_data, Train = True):
         b_data.x = self.node_encoder(b_data.x)
-        b_data.edge_attr = self.edge_encoder(b_data.edge_attr)
+        # b_data.edge_attr = self.edge_encoder(b_data.edge_attr)
 
         for i in range(self.ae_layers): 
             b_data = self.layers[i](b_data)
@@ -111,7 +113,7 @@ class Encoder(nn.Module):
             logger.debug(f'Latent nodes : {x_t.shape}')
             # e_t = self.edge_latent_mlp(b_data)
             # logger.debug(f'Latent edges : {e_t.shape}')
-            # Sampling latent vector for nodes and calculating KL-divergence
+            # Sampling latent vector for nodes and calculating KL-divergence)
             mu_nodes = self.mlp_mu_nodes(x_t)
             log_var_nodes = self.mlp_logvar_nodes(x_t)
             z_nodes = self.sample(mu_nodes, log_var_nodes)

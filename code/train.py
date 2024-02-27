@@ -63,15 +63,9 @@ def train(model, train_loader, val_loader, optimizer, args):
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
             logger.debug(f'{b_data=}')
-            pred, (kl_nodes, kl_edges) = model(b_data)
-            if args.dual_loss:
-                rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-                rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
-                # Loss KL Loss Node + alpha(KL Loss Edge)
-                loss = (beta*kl_nodes + rec_loss_node) + args.alpha*(beta*kl_edges + rec_loss_edge)
-            else:
-                rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-                loss = beta*kl_nodes + rec_loss_node
+            pred, kl = model(b_data)
+            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+            loss = beta*kl + rec_loss_node
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -127,8 +121,8 @@ def validate(model, val_loader, criterion, epoch, args):
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
         rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-        rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
-        loss = rec_loss_node + args.alpha*rec_loss_edge
+        #rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+        loss = rec_loss_node
         total_loss += loss.item()
         if idx == rand_idx and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
@@ -165,11 +159,9 @@ def test(model, test_loader, args):
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
         rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-        rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
-        loss = rec_loss_node + 0.5*rec_loss_edge
+        # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+        loss = rec_loss_node
         total_loss += loss.item()
-        logger.error(f'{pred.x.shape=}')
-        logger.error(f'{batch.x.shape=}')
         total_accuracy += kld(input=torch.log(pred.x), target=batch.x).item()
         loss_over_t.append(loss.item())
         ts.append(batch.t.cpu())
@@ -242,7 +234,7 @@ def save_mesh(pred, truth, idx, args):
     fig = plot_dual_mesh(pred, truth)
     fig.savefig(path, bbox_inches="tight")
     plt.close()
-    logger.info(f'Mesh saved at {path}')
+    logger.success(f'Mesh saved at {path}')
     
 class LMSELoss(nn.Module):
     def __init__(self):

@@ -473,12 +473,12 @@ class LatentVecLayer(nn.Module):
         self.type = type
 
         self.hidden_dim_mlp = Sequential(Linear(self.hidden_dim, self.hidden_dim // 2),
-                              ReLU(),
+                              #ReLU(),
                               Linear(self.hidden_dim // 2, 1),
                               LayerNorm(1)
                               )
         self.latent_dim_mlp = Sequential(Linear(self.max_dim, self.max_dim // 2),
-                              ReLU(),
+                              #ReLU(),
                               Linear(self.max_dim // 2, self.latent_dim),
                               LayerNorm(self.latent_dim)
                               )
@@ -515,8 +515,8 @@ class LatentVecLayer(nn.Module):
         x = self.latent_dim_mlp(x)
         logger.debug(f'After latent: {x.shape}')
         # Return latent vector
-        return self.act(x)
-        #return self.act(x).transpose(1,2)
+        #return self.act(x)
+        return self.act(x).transpose(1,2)
         
     
     def batch_to_dense_transpose(self, b_data):
