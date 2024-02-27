@@ -1,8 +1,0 @@
-black
-isort
-ruff
-autopep8
-pylint
-
-
-py-spy
