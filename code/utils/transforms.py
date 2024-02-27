@@ -14,6 +14,7 @@ def filter_adj(
 ) -> Tuple[Tensor, Tensor, OptTensor]:
     return row[mask], col[mask], None if edge_attr is None else edge_attr[mask]
 
+
 # Edgemasking, better than the "Edge_Mask" defined further down
 def dropout_adj(
     edge_index: Tensor,
@@ -76,12 +77,13 @@ class AttributeMask(BaseTransform):
 
         return dataobject
 
+
 @functional_transform("FlipGraph")
 class FlipGraph(BaseTransform):
     """Flips a graph horizontally. This changes the following attributes:
-        - Velocities at nodes : x
-        - Mesh positions for plotting : mesh_pos
-        - Edge attributes between nodes : edge_attr.
+    - Velocities at nodes : x
+    - Mesh positions for plotting : mesh_pos
+    - Edge attributes between nodes : edge_attr.
     """
 
     def __call__(self, data: Data) -> Data:
@@ -89,7 +91,7 @@ class FlipGraph(BaseTransform):
         mesh_pos = data.mesh_pos.clone()
         edge_attr = data.edge_attr.clone()
         x[..., 0] = -x[..., 0]
-        edge_attr[...,0] *= -1
+        edge_attr[..., 0] *= -1
         mesh_pos[..., 0] = -mesh_pos[..., 0]
 
         data.edge_attr = edge_attr
@@ -97,6 +99,7 @@ class FlipGraph(BaseTransform):
         data.x = x
 
         return data
+
 
 @functional_transform("my_edge_mask")
 class EdgeMask(BaseTransform):
@@ -129,9 +132,9 @@ class EdgeMask(BaseTransform):
         return dataobject
 
 
-"""From 
+"""From
 https://pytorch-geometric.readthedocs.io/en/latest/get_started/introduction.html
 
-Note that edge_index, i.e. the tensor defining the source and target nodes of all edges, 
-is not a list of index tuples. If you want to write your indices this way, you should 
+Note that edge_index, i.e. the tensor defining the source and target nodes of all edges,
+is not a list of index tuples. If you want to write your indices this way, you should
 transpose and call contiguous on it before passing them to the data constructor:"""

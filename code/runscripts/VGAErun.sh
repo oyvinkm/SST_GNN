@@ -8,14 +8,14 @@ target="19-02-24/test2"         # used when we want to load a model
 prefix="../logs"
 TF_ENABLE_ONEDNN_OPTS=0 python VGAErun.py \
     -ae_layers 3 \
-    -batch_size 8 \
-    -epochs 80 \
+    -batch_size 16 \
+    -epochs 35 \
     -instance_id 1 \
     -loss_step 10 \
     -log_step 2 \
     -lr 1e-4 \
     -latent_dim 128 \
-    -logger_lvl INFO \
+    -logger_lvl info \
     -loss LMSE \
     -load_model False \
     -mpl_layers 1 \
@@ -24,7 +24,7 @@ TF_ENABLE_ONEDNN_OPTS=0 python VGAErun.py \
     -num_blocks 1 \
     -normalize false \
     -out_feature_dim 11 \
-    -random_search True \
+    -random_search False \
     -save_args_dir $prefix/args/$day \
     -save_encodings False \
     -save_gif_dir $prefix/gifs/$day \
@@ -42,4 +42,3 @@ TF_ENABLE_ONEDNN_OPTS=0 python VGAErun.py \
     -transform false \
     -transform_p 0.3 \
     -val_ratio 0.1 \
-    -zip_dim 64

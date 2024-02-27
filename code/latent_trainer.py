@@ -1,11 +1,9 @@
 import os
 
 import torch
-import torch.nn as nn
 from loguru import logger
 from matplotlib import pyplot as plt
-
-from model.utility import DeformatorType, MeanTracker, ShiftDistribution
+from model.utility import MeanTracker
 
 
 def save_difference_norms(train_set):
@@ -30,11 +28,11 @@ def save_difference_norms(train_set):
 
 
 def train(deformator, latent_scaler, train_loader, validation_loader, deformator_args):
-    deformator.to(self.device).train()
+    deformator.to(deformator_args.device)
 
     logger.debug(f"look two lines below {deformator.type=}")
 
-    deformator_opt = torch.optim.Adam(deformator.parameters(), lr=1-e4)
+    deformator_opt = torch.optim.Adam(deformator.parameters(), lr=1e-4)
 
     avgs = (
         MeanTracker("percent"),
@@ -55,11 +53,12 @@ def train(deformator, latent_scaler, train_loader, validation_loader, deformator
             deformator.zero_grad()
 
             # Deformation for 'proj'
-            direction_prediction = deformator(z1).squeeze(dim = 3)
+            direction_prediction = deformator(z1).squeeze(dim=3)
             scalar_prediction = latent_scaler(z1)
 
-            
-            z2_prediction = z1 + (scalar_prediction * shift_prediction).squeeze(dim=2)
+            z2_prediction = z1 + (direction_prediction * scalar_prediction).squeeze(
+                dim=2
+            )
 
             loss = torch.mean(torch.abs(z2_prediction - z2))
             loss.backward()
@@ -70,9 +69,10 @@ def train(deformator, latent_scaler, train_loader, validation_loader, deformator
             total_loss += loss.item()
         total_loss /= len(train_loader)
         train_losses.append(total_loss)
-        val_loss = self.validate(deformator, validation_loader, epoch)
+        val_loss = validate(deformator, validation_loader, epoch)
         val_losses.append(val_loss)
     save_plots(deformator, train_losses, val_losses, deformator_args)
+
 
 @torch.no_grad()
 def validate(deformator, latent_scaler, validation_loader, epoch):
@@ -86,10 +86,10 @@ def validate(deformator, latent_scaler, validation_loader, epoch):
 
         # Deformation for 'id'
 
-        direction_prediction = deformator(z1).squeeze(dim = 3)
+        direction_prediction = deformator(z1).squeeze(dim=3)
         scalar_prediction = latent_scaler(z1)
 
-        z2_prediction = z1 + (scalar_prediction * shift_prediction).squeeze(dim=2)
+        z2_prediction = z1 + (direction_prediction * scalar_prediction).squeeze(dim=2)
 
         shift_loss = torch.mean(torch.abs(z2_prediction - z2))
 

@@ -1,5 +1,3 @@
-DOESN'T WORK YET!!
-
 Make sure we have opened Cisco anyconnect secure mobility client and conncected to KU
 Open Powershell
 ssh hendrix

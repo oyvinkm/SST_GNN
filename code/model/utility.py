@@ -1,20 +1,16 @@
-from functools import wraps
-import types
-
-from loguru import logger
 import numpy as np
 import scipy
 import torch
+from loguru import logger  # noqa: F401
 from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential
 from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
-from torch_geometric.utils import (coalesce, contains_isolated_nodes, degree,
-                                   to_dense_adj)
+from torch_geometric.utils import coalesce, degree, to_dense_adj
 from torch_scatter import scatter
 
 
-def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
+def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str = "mean"):
     r"""Pools the edges of a graph to a new set of edges using the idxHR_to_idxLR mapping.
 
     Args:
@@ -26,65 +22,75 @@ def pool_edge(m_id, edge_index, edge_attr: torch.Tensor, aggr: str="mean"):
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: The new edge indices and attributes.
     """
-    num_nodes = len(m_id)# number of nodes in the lower resolution graph
+    num_nodes = len(m_id)  # number of nodes in the lower resolution graph
     if not torch.is_tensor(edge_index):
         edge_index = torch.tensor(edge_index)
     if edge_index.numel() > 0:
-        edge_index, edge_attr = coalesce(edge_index, edge_attr, num_nodes, reduce=aggr) # aggregate edges
+        edge_index, edge_attr = coalesce(
+            edge_index, edge_attr, num_nodes, reduce=aggr
+        )  # aggregate edges
     return edge_index, edge_attr
 
 
-
 def _adj_mat_to_flat_edge(adj_mat):
-  if len(adj_mat.shape) == 2:
-    s,r = np.where(adj_mat)
-    return torch.tensor(np.array([s, r]), dtype=torch.int64)
-  elif len(adj_mat.shape) == 3:
-    s,r, p = np.where(adj_mat.astype(bool))
-    return torch.tensor([s, r, p], dtype=torch.int64)
+    if len(adj_mat.shape) == 2:
+        s, r = np.where(adj_mat)
+        return torch.tensor(np.array([s, r]), dtype=torch.int64)
+    elif len(adj_mat.shape) == 3:
+        s, r, p = np.where(adj_mat.astype(bool))
+        return torch.tensor([s, r, p], dtype=torch.int64)
 
 
 def adj_degree(g):
-  # For efficiency
-  g = scipy.sparse.coo_array(g)
-  g.setdiag(1)
-  # Compressed sparse row format
-  g = g.tocsr().astype(float)
+    # For efficiency
+    g = scipy.sparse.coo_array(g)
+    g.setdiag(1)
+    # Compressed sparse row format
+    g = g.tocsr().astype(float)
 
-  # Dot product/matrix multiplication
-  g = g@g
-  g.setdiag(0)
-  return g.toarray()
+    # Dot product/matrix multiplication
+    g = g @ g
+    g.setdiag(0)
+    return g.toarray()
+
 
 def unpool_edge(edge_index, edge_attr, e_idx, args):
-  g = to_dense_adj(edge_index).detach().numpy().squeeze()
-  # Matrix Magic
-  g = adj_degree(g)
-  # To Flat Edge
-  g = _adj_mat_to_flat_edge(g)
-  # Create empty array of all possible edges 
-  new_edge_attr = torch.zeros((g.shape[1], edge_attr.shape[-1]), dtype=torch.float32).to(args.device)
-  # Creates a 1d list of the 2d list
-  c = g.T[:,0]+g.T[:,1]*1j
-  # Creates a 1d list of the 2d list
-  d = edge_index.T[:,0]+edge_index.T[:,1]*1j
-  # Mask out actual edges
-  res = np.in1d(c,d)
-  mask = np.where(res)[0]
-  # Fill out edge attributes of prev resolution
-  new_edge_attr[e_idx,:] = edge_attr
-  # Mask edge_attributes
-  new_edge_attr = new_edge_attr[mask]
-  new_edge_index = g[:, mask]
-  return new_edge_index, new_edge_attr
+    g = to_dense_adj(edge_index).detach().numpy().squeeze()
+    # Matrix Magic
+    g = adj_degree(g)
+    # To Flat Edge
+    g = _adj_mat_to_flat_edge(g)
+    # Create empty array of all possible edges
+    new_edge_attr = torch.zeros(
+        (g.shape[1], edge_attr.shape[-1]), dtype=torch.float32
+    ).to(args.device)
+    # Creates a 1d list of the 2d list
+    c = g.T[:, 0] + g.T[:, 1] * 1j
+    # Creates a 1d list of the 2d list
+    d = edge_index.T[:, 0] + edge_index.T[:, 1] * 1j
+    # Mask out actual edges
+    res = np.in1d(c, d)
+    mask = np.where(res)[0]
+    # Fill out edge attributes of prev resolution
+    new_edge_attr[e_idx, :] = edge_attr
+    # Mask edge_attributes
+    new_edge_attr = new_edge_attr[mask]
+    new_edge_index = g[:, mask]
+    return new_edge_index, new_edge_attr
+
 
 class MessagePassingEdgeConv(MessagePassing):
     def __init__(self, channel_in, channel_out, args):
         super(MessagePassingEdgeConv, self).__init__()
-        self.messagePassing = MessagePassingBlock(hidden_dim=channel_in, latent_dim = channel_out, num_blocks=args.num_blocks, args = args)
+        self.messagePassing = MessagePassingBlock(
+            hidden_dim=channel_in,
+            latent_dim=channel_out,
+            num_blocks=args.num_blocks,
+            args=args,
+        )
         self.edge_conv = WeightedEdgeConv()
         self.args = args
-    
+
     def forward(self, b_data):
         x, g, w = b_data.x, b_data.edge_index, b_data.weights
         x = self.messagePassing(x, g)
@@ -93,11 +99,11 @@ class MessagePassingEdgeConv(MessagePassing):
         x = self.edge_conv(x, g, ew)
         # Does edge convolution on position with edge weights
         if len(w.shape) < 2:
-            w = w.unsqueeze(dim = 1)
+            w = w.unsqueeze(dim=1)
         b_data.weights = w
         b_data.x = x
         return b_data
-    
+
 
 class GCNConv(MessagePassing):
     """
@@ -135,6 +141,7 @@ class GCNConv(MessagePassing):
 
         # Step 5: Return new node embeddings.
         return aggr_out
+
 
 class WeightedEdgeConv(MessagePassing):
     """
@@ -177,6 +184,7 @@ class WeightedEdgeConv(MessagePassing):
         ec = w_to_send / aggr_w[j]
         return ec, aggr_w
 
+
 class MessagePassingBlock(torch.nn.Module):
     """
     Just combines n number of message passing layers
@@ -192,13 +200,17 @@ class MessagePassingBlock(torch.nn.Module):
         self.channel_out = channel_out
         self.processor = nn.ModuleList()
         assert self.num_blocks >= 1, "Number of message passing layers is not >=1"
-        
+
         processor_layer = self.build_processor_model()
         for i in range(self.num_blocks):
             if i == 0:
-                self.processor.append(processor_layer(self.channel_in, self.channel_out))
+                self.processor.append(
+                    processor_layer(self.channel_in, self.channel_out)
+                )
             else:
-                self.processor.append(processor_layer(self.channel_out, self.channel_out))
+                self.processor.append(
+                    processor_layer(self.channel_out, self.channel_out)
+                )
 
     def build_processor_model(self):
         return ProcessorLayer
@@ -210,13 +222,14 @@ class MessagePassingBlock(torch.nn.Module):
             b_data = self.processor[i](b_data)
         return b_data
 
+
 class MessagePassingLayer(torch.nn.Module):
     """
     Kinda like a U-Net but with Message Passing Blocks.
     The Multiscale Autoencoder consists of multiple of these
     """
 
-    def __init__(self, hidden_dim, latent_dim, args, bottom = False, first_up = False):
+    def __init__(self, hidden_dim, latent_dim, args, bottom=False, first_up=False):
         super(MessagePassingLayer, self).__init__()
         self.l_n = args.mpl_layers
         self.args = args
@@ -236,7 +249,9 @@ class MessagePassingLayer(torch.nn.Module):
         self.down_gmps = nn.ModuleList()
         self.up_gmps = nn.ModuleList()
         self.unpools = nn.ModuleList()
-        self.bottom_gmp = MessagePassingBlock(channel_in = self.latent_dim, channel_out = self.latent_dim, args=args)
+        self.bottom_gmp = MessagePassingBlock(
+            channel_in=self.latent_dim, channel_out=self.latent_dim, args=args
+        )
         self.edge_conv = WeightedEdgeConv()
         self.pool = self._pooling_strategy()
         self.pools = nn.ModuleList()
@@ -248,14 +263,24 @@ class MessagePassingLayer(torch.nn.Module):
         for i in range(self.l_n):
             if i == 0:
                 self.down_gmps.append(
-                        MessagePassingBlock(channel_in=self.hidden_dim, channel_out = self.latent_dim, args=args)
+                    MessagePassingBlock(
+                        channel_in=self.hidden_dim,
+                        channel_out=self.latent_dim,
+                        args=args,
                     )
+                )
             else:
                 self.down_gmps.append(
-                       MessagePassingBlock(channel_in=self.latent_dim, channel_out = self.latent_dim, args=args)
+                    MessagePassingBlock(
+                        channel_in=self.latent_dim,
+                        channel_out=self.latent_dim,
+                        args=args,
                     )
+                )
             self.up_gmps.append(
-                MessagePassingBlock(channel_in=self.latent_dim, channel_out=self.latent_dim, args=args)
+                MessagePassingBlock(
+                    channel_in=self.latent_dim, channel_out=self.latent_dim, args=args
+                )
             )
             self.unpools.append(Unpool())
             if self.args.pool_strat == "ASA":
@@ -265,13 +290,11 @@ class MessagePassingLayer(torch.nn.Module):
                     )
                 )
             else:
-                self.pools.append(
-                    self.pool(self.latent_dim, self.mpl_ratio)
-                )
+                self.pools.append(self.pool(self.latent_dim, self.mpl_ratio))
 
     def forward(self, b_data):
         """Forward pass through Message Passing Layer"""
-        # Maybe make into a dict for readability? 
+        # Maybe make into a dict for readability?
         down_outs = []
         cts = []
         down_masks = []
@@ -279,10 +302,14 @@ class MessagePassingLayer(torch.nn.Module):
         batches = []
         ws = []
         attr = []
-        b_data.weights = b_data.x.new_ones((b_data.x.shape[-2], 1)) if b_data.weights is None else b_data.weights
+        b_data.weights = (
+            b_data.x.new_ones((b_data.x.shape[-2], 1))
+            if b_data.weights is None
+            else b_data.weights
+        )
         for i in range(self.l_n):
-            """ h = b_data.x
-            g = b_data.edge_index """
+            """h = b_data.x
+            g = b_data.edge_index"""
             # This should return x, edge_attr
             b_data = self.down_gmps[i](b_data)
             # record the infor before aggregation
@@ -301,7 +328,7 @@ class MessagePassingLayer(torch.nn.Module):
                 b_data.x = self.edge_conv(b_data.x, b_data.edge_index, ew)
                 # Does edge convolution on position with edge weights
                 cts.append(ew)
-            #b_data.x = h
+            # b_data.x = h
             if self.args.pool_strat == "ASA":
                 x, edge_index, edge_attr, batch, index = self.pools[i](
                     b_data.x, b_data.edge_index, b_data.edge_attr, b_data.batch
@@ -331,9 +358,11 @@ class MessagePassingLayer(torch.nn.Module):
             )
             # Old Edge
             b_data.edge_index = down_gs[up_idx]
-            #Edge Convolution
+            # Edge Convolution
             if self.args.edge_conv:
-                b_data.x = self.edge_conv(b_data.x, b_data.edge_index, cts[up_idx], aggragating=False)
+                b_data.x = self.edge_conv(
+                    b_data.x, b_data.edge_index, cts[up_idx], aggragating=False
+                )
             # Message Passing
             # Skip connection batch
             b_data.batch = batches[up_idx]
@@ -342,11 +371,11 @@ class MessagePassingLayer(torch.nn.Module):
             b_data.edge_attr = attr[up_idx]
             b_data = self.up_gmps[i](b_data)
             b_data.x = b_data.x.add(down_outs[up_idx])
-            #b_data.x = h
-            #b_data.edge_index = tmp_g
-        #b_data.edge_attr = edge_attr
+            # b_data.x = h
+            # b_data.edge_index = tmp_g
+        # b_data.edge_attr = edge_attr
         return b_data
-    
+
     def _pooling_strategy(self):
         if self.args.pool_strat == "ASA":
             pool = ASAPooling
@@ -356,9 +385,10 @@ class MessagePassingLayer(torch.nn.Module):
             pool = TopKPooling
         return pool
 
+
 class ProcessorLayer(MessagePassing):
-    def __init__(self, in_channels, out_channels,  **kwargs):
-        super(ProcessorLayer, self).__init__(  **kwargs )
+    def __init__(self, in_channels, out_channels, **kwargs):
+        super(ProcessorLayer, self).__init__(**kwargs)
         """
         in_channels: dim of node embeddings [128], out_channels: dim of edge embeddings [128]
 
@@ -369,16 +399,19 @@ class ProcessorLayer(MessagePassing):
         # size. This means that the input of the edge processor will always be
         # three times the specified hidden dimension
         # (input: adjacent node embeddings and self embeddings)
-        self.edge_mlp = Sequential(Linear( 3* in_channels , out_channels),
-                                   ReLU(),
-                                   Linear( out_channels, out_channels),
-                                   LayerNorm(out_channels))
+        self.edge_mlp = Sequential(
+            Linear(3 * in_channels, out_channels),
+            ReLU(),
+            Linear(out_channels, out_channels),
+            LayerNorm(out_channels),
+        )
 
-        self.node_mlp = Sequential(Linear(in_channels + out_channels, out_channels),
-                                   ReLU(),
-                                   Linear(out_channels, out_channels),
-                                   LayerNorm(out_channels))
-
+        self.node_mlp = Sequential(
+            Linear(in_channels + out_channels, out_channels),
+            ReLU(),
+            Linear(out_channels, out_channels),
+            LayerNorm(out_channels),
+        )
 
         self.reset_parameters()
 
@@ -392,7 +425,7 @@ class ProcessorLayer(MessagePassing):
         self.node_mlp[0].reset_parameters()
         self.node_mlp[2].reset_parameters()
 
-    def forward(self, b_data, size = None):
+    def forward(self, b_data, size=None):
         """
         Handle the pre and post-processing of node features/embeddings,
         as well as initiates message passing by calling the propagate function.
@@ -408,18 +441,21 @@ class ProcessorLayer(MessagePassing):
         x = b_data.x
         edge_index = b_data.edge_index
         edge_attr = b_data.edge_attr
-        arguments = {'dim_size' : (x.size(0), self.in_channels + self.out_channels)}
+        arguments = {"dim_size": (x.size(0), self.in_channels + self.out_channels)}
 
-        out, updated_edges = self.propagate(edge_index = edge_index, 
-                                            x = x, 
-                                            edge_attr = edge_attr, 
-                                            size = (x.size(0), x.size(0)), 
-                                            **arguments) # out has the shape of [E, out_channels]
+        out, updated_edges = self.propagate(
+            edge_index=edge_index,
+            x=x,
+            edge_attr=edge_attr,
+            size=(x.size(0), x.size(0)),
+            **arguments,
+        )  # out has the shape of [E, out_channels]
 
+        updated_nodes = torch.cat(
+            [x, out], dim=1
+        )  # Complete the aggregation through self-aggregation
 
-        updated_nodes = torch.cat([x,out],dim=1)        # Complete the aggregation through self-aggregation
-
-        updated_nodes = self.node_mlp(updated_nodes)    # residual connection
+        updated_nodes = self.node_mlp(updated_nodes)  # residual connection
 
         b_data.x = updated_nodes
         b_data.edge_attr = updated_edges
@@ -433,13 +469,14 @@ class ProcessorLayer(MessagePassing):
 
         The messages that are passed are the raw embeddings. These are not processed.
         """
-
-        updated_edges=torch.cat([x_i, x_j, edge_attr], dim = 1) # tmp_emb has the shape of [E, 3 * in_channels]
-        updated_edges=self.edge_mlp(updated_edges)
+        updated_edges = torch.cat(
+            [x_i, x_j, edge_attr], dim=1
+        )  # tmp_emb has the shape of [E, 3 * in_channels]
+        updated_edges = self.edge_mlp(updated_edges)
 
         return updated_edges
 
-    def aggregate(self, updated_edges, edge_index, dim_size = None):
+    def aggregate(self, updated_edges, edge_index, dim_size=None):
         """
         First we aggregate from neighbors (i.e., adjacent nodes) through concatenation,
         then we aggregate self message (from the edge itself). This is streamlined
@@ -448,7 +485,13 @@ class ProcessorLayer(MessagePassing):
         # The axis along which to index number of nodes.
         node_dim = 0
 
-        out = scatter(updated_edges, edge_index[0, :], dim=node_dim, reduce = 'sum', dim_size=dim_size)
+        out = scatter(
+            updated_edges,
+            edge_index[0, :],
+            dim=node_dim,
+            reduce="sum",
+            dim_size=dim_size,
+        )
         return out, updated_edges
 
 
@@ -466,116 +509,9 @@ class Unpool(nn.Module):
         return new_h
 
 
-#################### Direction training ##########################
-from enum import Enum
-import json
-import os
-
-
-def torch_log2(x):
-    return torch.log(x) / np.log(2.0)
-
-
-def torch_pade13(A):
-    b = torch.tensor([64764752532480000., 32382376266240000., 7771770303897600.,
-                      1187353796428800., 129060195264000., 10559470521600.,
-                      670442572800., 33522128640., 1323241920., 40840800.,
-                      960960., 16380., 182., 1.], dtype=A.dtype, device=A.device)
-
-    ident = torch.eye(A.shape[1], dtype=A.dtype).to(A.device)
-    A2 = torch.matmul(A, A)
-    A4 = torch.matmul(A2, A2)
-    A6 = torch.matmul(A4, A2)
-    U = torch.matmul(A,
-                     torch.matmul(A6, b[13] * A6 + b[11] * A4 + b[9] * A2) + b[7] * A6 + b[5] * A4 +
-                     b[3] * A2 + b[1] * ident)
-    V = torch.matmul(A6, b[12] * A6 + b[10] * A4 + b[8] * A2) + b[6] * A6 + b[4] * A4 + b[2] * A2 +\
-        b[0] * ident
-    return U, V
-
-def vgae_with_shift(vgae_factory):
-    """ 
-    Wraps the vgae with the add_forward_with_shift
-    It's also called a decorator function
-    """
-    @wraps(vgae_factory)
-    def wrapper(*args, **kwargs):
-        vgae = vgae_factory(*args, **kwargs)
-        add_forward_with_shift(vgae)
-        return vgae
-
-    return wrapper
-
-def add_forward_with_shift(generator):
-    """
-    Used in vgae_with_shift.
-    Shifts a vector in the latent space.
-    """
-    def gen_shifted(self, b_data, z, shift, *args, **kwargs):
-        return self.forward(b_data, z + shift, *args, **kwargs)
-
-    # Creates these attributes for our generetor
-    # the gen_shifted function is bound to the generator
-    # It can be reread here: https://stackoverflow.com/questions/46525069/how-is-types-methodtype-used
-    # Doesn't seem to important
-    generator.dim_z = generator.latent_dim
-    generator.gen_shifted = types.MethodType(gen_shifted, generator)
-    generator.dim_shift = generator.latent_dim
-
-
-
-class DeformatorType(Enum):
-    FC = 1
-    LINEAR = 2
-    ID = 3
-    ORTHO = 4
-    PROJECTIVE = 5
-    RANDOM = 6
-
-DEFORMATOR_TYPE_DICT = {
-    'fc': DeformatorType.FC,
-    'linear': DeformatorType.LINEAR,
-    'id': DeformatorType.ID,
-    'ortho': DeformatorType.ORTHO,
-    'proj': DeformatorType.PROJECTIVE,
-    'random': DeformatorType.RANDOM,
-}
-
-def torch_expm(A):
-    """Only used in the deformator in case the Deformator is of type ORTHO"""
-    n_A = A.shape[0]
-    A_fro = torch.sqrt(A.abs().pow(2).sum(dim=(1, 2), keepdim=True))
-
-    # Scaling step
-    maxnorm = torch.tensor([5.371920351148152], dtype=A.dtype, device=A.device)
-    zero = torch.tensor([0.0], dtype=A.dtype, device=A.device)
-    n_squarings = torch.max(zero, torch.ceil(torch_log2(A_fro / maxnorm)))
-    A_scaled = A / 2.0 ** n_squarings
-    n_squarings = n_squarings.flatten().type(torch.int64)
-
-    # Pade 13 approximation
-    U, V = torch_pade13(A_scaled)
-    P = U + V
-    Q = -U + V
-    R = torch.linalg.solve(P, Q)
-
-    # Unsquaring step
-    res = [R]
-    for i in range(int(n_squarings.max())):
-        res.append(res[-1].matmul(res[-1]))
-    R = torch.stack(res)
-    expmA = R[n_squarings, torch.arange(n_A)]
-    return expmA[0]
-
-def make_noise(batch, dim, truncation = None):
-    """Creates a random latent_vector of size equal to batch X dim"""
-    if isinstance(dim, int):
-        dim = [dim]
-    if truncation is None or truncation == 1.0:
-        return torch.randn([batch] + dim+[1,1])
-
 class MeanTracker(object):
     """Tracks the mean of the value in the list : values."""
+
     def __init__(self, name):
         self.values = []
         self.name = name
@@ -590,70 +526,3 @@ class MeanTracker(object):
         mean = self.mean()
         self.values = []
         return self.name, mean
-
-@torch.no_grad()
-def interpolate(G, z, shifts_r, shifts_count, dim, deformator=None, with_central_border=False, device='cpu'):
-    """Used by make_interpolation_chart"""
-    shifted_images = []
-    for shift in np.arange(-shifts_r, shifts_r + 1e-9, shifts_r / shifts_count):
-        if deformator is not None:
-            latent_shift = deformator(one_hot(deformator.input_dim, shift, dim).to(device))
-        else:
-            latent_shift = one_hot(G.dim_shift, shift, dim).to(device)
-        shifted_image = G.gen_shifted(z, latent_shift).cpu()[0]
-        if shift == 0.0 and with_central_border:
-            shifted_image = add_border(shifted_image)
-
-        shifted_images.append(shifted_image)
-    return shifted_images
-
-@torch.no_grad()
-def make_interpolation_chart(G, deformator=None, z=None,
-                             shifts_r=10.0, shifts_count=5,
-                             dims=None, dims_count=10, texts=None, device='cpu', **kwargs):
-    """Creates a figure that includes some interpolation"""
-    with_deformation = deformator is not None
-    if with_deformation:
-        deformator_is_training = deformator.training
-        deformator.eval()
-    z = z if z is not None else make_noise(1, G.dim_z).to(device)
-
-    if with_deformation:
-        original_img = G(z).cpu()
-    else:
-        original_img = G(z).cpu()
-    imgs = []
-    if dims is None:
-        dims = range(dims_count)
-    for i in dims:
-        imgs.append(interpolate(G, z, shifts_r, shifts_count, i, deformator, device=device))
-
-    rows_count = len(imgs) + 1
-    fig, axs = plt.subplots(rows_count, **kwargs)
-
-    axs[0].axis('off')
-    axs[0].imshow(to_image(original_img, True))
-
-    if texts is None:
-        texts = dims
-    for ax, shifts_imgs, text in zip(axs[1:], imgs, texts):
-        ax.axis('off')
-        plt.subplots_adjust(left=0.5)
-        ax.imshow(to_image(make_grid(shifts_imgs, nrow=(2 * shifts_count + 1), padding=1), True))
-        ax.text(-20, 21, str(text), fontsize=10)
-
-    if deformator is not None and deformator_is_training:
-        deformator.train()
-
-    return fig
-
-def fig_to_image(fig):
-    """creates an image from a figure"""
-    buf = io.BytesIO()
-    fig.savefig(buf)
-    buf.seek(0)
-    return Image.open(buf)
-
-class ShiftDistribution(Enum):
-    NORMAL = 0,
-    UNIFORM = 1,

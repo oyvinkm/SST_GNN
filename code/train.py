@@ -11,15 +11,13 @@ import enlighten
 import numpy as np
 import torch
 from loguru import logger
-from matplotlib import pyplot as plt
 from torch import nn
 from torch.nn import MSELoss
 from torch.nn import functional as F
 from torch_geometric import transforms as T
-
-from utils.transforms import AttributeMask, FlipGraph
-from utils.visualization import save_mesh 
 from utils.opt import build_optimizer
+from utils.transforms import AttributeMask, FlipGraph
+from utils.visualization import save_mesh
 
 
 def train(model, train_loader, validation_loader, args):
@@ -27,6 +25,7 @@ def train(model, train_loader, validation_loader, args):
     Performs a training loop on the dataset for MeshGraphNets. Also calls
     test and validation functions.
     """
+    logger.success("Started training...")
     model = model.to(args.device)
     optimizer = build_optimizer(args, model.parameters())
     criterion = LMSELoss()
@@ -101,7 +100,7 @@ def train(model, train_loader, validation_loader, args):
     if args.progress_bar:
         epochs.close()
         manager.stop()
-
+    logger.success("Training and validation complete...")
     return train_losses, val_losses, best_model
 
 
@@ -111,9 +110,11 @@ def validate(model, validation_loader, criterion, epoch, args):
     Performs a validation run on our current model with the validationset
     saved in the validation_loader.
     """
+    random_idx = randint(0, len(validation_loader) - 1)
     total_loss = 0
     model.eval()
     for idx, batch in enumerate(validation_loader):
+        logger.debug(f"{idx=}")
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
         # data needs to be preserved in order to correctly calculate the loss
@@ -125,7 +126,7 @@ def validate(model, validation_loader, criterion, epoch, args):
         pred, _ = model(b_data, Train=False)
         loss = criterion(pred.x[:, :2], b_data.x[:, :2])
         total_loss += loss.item()
-        if idx == 0 and args.save_mesh:
+        if idx == random_idx and args.save_mesh:
             save_mesh(pred, batch, epoch, args)
     total_loss /= idx
     return total_loss
@@ -234,16 +235,3 @@ class LMSELoss(nn.Module):
 
     def forward(self, pred, actual):
         return torch.log(self.mse(pred, actual) + 1)  # +1 to keep the loss from under 0
-
-
-
-
-
-
-
-
-
-
-
-
-
