@@ -81,7 +81,7 @@ class Encoder(nn.Module):
             kl = None
         self.save_bdata(b_data)
 
-        return kl, z, b_data
+        return kl, z
 
     def save_bdata(self, b_data):
         PATH = os.path.join(self.args.graph_structure_aelayers_dir, "b_data.pt")

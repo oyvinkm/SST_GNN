@@ -110,7 +110,9 @@ def validate(model, validation_loader, criterion, epoch, args):
     Performs a validation run on our current model with the validationset
     saved in the validation_loader.
     """
-    random_idx = randint(0, len(validation_loader) - 1)
+    random_idx = randint(
+        0, len(100)
+    )  # doing the first 50 as these varies a lot from the mean graph
     total_loss = 0
     model.eval()
     for idx, batch in enumerate(validation_loader):
@@ -162,8 +164,6 @@ def test(model, test_loader, args):
             save_mesh(pred, batch, "test", args)
         loss = criterion(pred.x[:, :2], batch.x[:, :2])
         total_loss += loss.item()
-        logger.error(f"{pred.x.shape=}")
-        logger.error(f"{batch.x.shape=}")
         total_accuracy += kld(input=torch.log(pred.x), target=batch.x).item()
         loss_over_t.append(loss.item())
         ts.append(batch.t.cpu())

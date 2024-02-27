@@ -35,6 +35,6 @@ class MultiScaleAutoEncoder(nn.Module):
         )
 
     def forward(self, b_data, Train=True):
-        kl, z, b_data = self.encoder(b_data, Train)
+        kl, z = self.encoder(b_data, Train)
         b_data = self.decoder(z)
         return b_data, kl
