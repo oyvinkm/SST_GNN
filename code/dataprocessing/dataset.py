@@ -4,13 +4,14 @@ import pickle
 import re
 import torch
 
-from torch_geometric.data import Dataset
+from torch_geometric.data import Dataset, Data
 from loguru import logger
 from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
 
 
 class MeshDataset(Dataset):
   def __init__(self, args, mode):
+    self.args = args
     self.data_dir = args.data_dir
     self.layer_num = args.ae_layers
     self.mode = mode
@@ -33,6 +34,7 @@ class MeshDataset(Dataset):
     self.m_ids = [{} for _ in range(self.layer_num)]
     self.m_gs = [{} for _ in range(self.layer_num + 1)]
     self.e_s = [{} for _ in range(self.layer_num )] 
+    self.graph_placeholders = {t : None for t in self.trajectories}
     self._get_bi_stride()
     super().__init__(self.data_dir)
   
@@ -40,7 +42,8 @@ class MeshDataset(Dataset):
     for t in self.trajectories:
       f = next(filter(lambda str : str.startswith(t), self.processed_file_names))
       g = torch.load(os.path.join(self.data_file, f))
-      self._cal_multi_mesh(t, g)
+      m_ids, m_gs, e_s = self._cal_multi_mesh(t, g)
+      self.make_placeholder(g, m_ids, m_gs, t)
 
   @property
   def processed_file_names(self):
@@ -66,35 +69,56 @@ class MeshDataset(Dataset):
   def __iter__(self):
     return self
 
+  def make_placeholder(self, g, m_ids, m_gs, trajectory):
+    # Data(x=[1768, 54], edge_index=[2, 10132], edge_attr=[10132, 3], y=[1768, 2], p=[1768, 1], cells=[3298, 3], weights=[1768, 1], mesh_pos=[1768, 2], t=598, trajectory='147')
+    x = torch.zeros((len(m_ids[-1]), self.args.latent_dim))
+    edge_index = m_gs[-1]
+    edge_attr = g.edge_attr
+    y = g.y
+    p = g.p
+    cells = g.cells
+    weights = torch.ones((len(m_ids[-1]), 1))
+    mesh_pos = g.mesh_pos
+    t = 0
+    trajectory = trajectory
+    self.graph_placeholders[trajectory] = Data(x = x, edge_index = edge_index, 
+                                               edge_attr = edge_attr, 
+                                               y = y, 
+                                               p = p, 
+                                               cells = cells, 
+                                               weights = weights, 
+                                               mesh_pos = mesh_pos, 
+                                               t = 0, 
+                                               trajectory = trajectory)
+
   def _cal_multi_mesh(self, traj, g):
-      mmfile = os.path.join(self.mm_dir, str(traj) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
-      mmexist = os.path.isfile(mmfile)
-      if not mmexist:
-          logger.info(f'Calculating multi mesh for trajectory {traj}')
-          edge_i = g.edge_index
-          n = g.x.shape[0]
-          m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
-                                                    self.layer_num,
-                                                    n=n,
-                                                    pos_mesh=None)
-          m_mesh = {'m_gs': m_gs, 'm_ids': m_ids, 'e_s' : e_s}
-          pickle.dump(m_mesh, open(mmfile, 'wb'))
-      else:
-          logger.info(f'Loaded multi mesh for trajectory {traj}')
-          m_mesh = pickle.load(open(mmfile, 'rb'))
-          m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
-      if len(m_ids[-1]) > self.max_latent_nodes:
-        self.max_latent_nodes = len(m_ids[-1])
-      if m_gs[-1].shape[-1] > self.max_latent_edges:
-         self.max_latent_edges = m_gs[-1].shape[-1]
-
-      for i in range(len(m_ids)):
-        self.m_ids[i][str(traj)] = torch.tensor(m_ids[i])
-      for j in range(len(m_gs)):
-        self.m_gs[j][str(traj)] = m_gs[j]
-      for k in range(len(e_s)):
-        self.e_s[k][str(traj)] = torch.tensor(e_s[k])
-
+    mmfile = os.path.join(self.mm_dir, str(traj) + '_mmesh_layer_' + str(self.layer_num) + '.dat')
+    mmexist = os.path.isfile(mmfile)
+    if not mmexist:
+        logger.info(f'Calculating multi mesh for trajectory {traj}')
+        edge_i = g.edge_index
+        n = g.x.shape[0]
+        m_gs, m_ids, e_s = generate_multi_layer_stride(edge_i,
+                                                  self.layer_num,
+                                                  n=n,
+                                                  pos_mesh=None)
+        m_mesh = {'m_gs': m_gs, 'm_ids': m_ids, 'e_s' : e_s}
+        pickle.dump(m_mesh, open(mmfile, 'wb'))
+    else:
+        logger.info(f'Loaded multi mesh for trajectory {traj}')
+        m_mesh = pickle.load(open(mmfile, 'rb'))
+        m_gs, m_ids, e_s = m_mesh['m_gs'], m_mesh['m_ids'], m_mesh['e_s']
+    if len(m_ids[-1]) > self.max_latent_nodes:
+      self.max_latent_nodes = len(m_ids[-1])
+    if m_gs[-1].shape[-1] > self.max_latent_edges:
+        self.max_latent_edges = m_gs[-1].shape[-1]
+    for i in range(len(m_ids)):
+      self.m_ids[i][str(traj)] = torch.tensor(m_ids[i])
+    for j in range(len(m_gs)):
+      self.m_gs[j][str(traj)] = m_gs[j]
+    for k in range(len(e_s)):
+      self.e_s[k][str(traj)] = torch.tensor(e_s[k])
+    return m_ids, m_gs, e_s
 
 class DatasetPairs(Dataset):
   def __init__(self, args):

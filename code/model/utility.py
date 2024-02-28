@@ -14,6 +14,7 @@ from torch_geometric.nn.conv import GraphConv, MessagePassing
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree, coalesce,to_dense_adj
 from torch_scatter import scatter
+from dataclasses import dataclass, astuple
 
 
 
@@ -719,3 +720,14 @@ def fig_to_image(fig):
 class ShiftDistribution(Enum):
     NORMAL = 0,
     UNIFORM = 1,
+
+
+@dataclass
+class LatentVector:
+    z : torch.TensorType
+    t : list
+
+    def __iter__(self):
+        return iter(zip(self.z, self.t))
+    def __repr__(self) -> str:
+        return f'z : {self.z.shape},  t : {self.t}'
