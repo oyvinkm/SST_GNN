@@ -21,7 +21,7 @@ from dataprocessing.utils.loading import save_traj_pairs
 from model.model import MultiScaleAutoEncoder
 from utils.visualization import make_gif, plot_loss
 from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
-from utils.opt import build_optimizer, merge_dataset_stats
+from utils.helperfuncs import build_optimizer, merge_dataset_stats
 from train import test, train
 
 def apply_transform(args):
@@ -41,6 +41,7 @@ parser.add_argument('-ae_ratio', type=none_or_float, default=0.5)
 parser.add_argument('-ae_layers', type=int, default=2)
 parser.add_argument('-alpha', type=float, default=0.5)
 parser.add_argument('-batch_size', type=int, default=16)
+parser.add_argument('-args_file', type=none_or_str, default=None)
 parser.add_argument('-data_dir', type=str, default='../data/cylinder_flow/trajectories_1768')
 parser.add_argument('-dual_loss', type=t_or_f, default = False)
 parser.add_argument('-epochs', type=int, default=1)
@@ -124,7 +125,7 @@ def main():
         train_data[0].edge_attr.shape[1],
         train_data[0].x.shape[0]
     )
-    m_ids, m_gs, e_s, args.max_latent_nodes, args.max_latent_edges = merge_dataset_stats(train_data, test_data, val_data)
+    m_ids, m_gs, e_s, args.max_latent_nodes, args.max_latent_edges, graph_placeholders = merge_dataset_stats(train_data, test_data, val_data)
    
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
@@ -138,10 +139,18 @@ def main():
 
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
-    if not args.latent_space:
-        logger.warning("Model is not going into latent_space")
+
+    if args.args_file is not None:
+        if os.path.isfile(args.args_file):
+            with open(args.args_file, 'r') as f:
+                args_dict = json.loads(f.read())
+                for k, v in args_dict.items():
+                    if k in ['load_model', 'make_gif']:
+                        continue
+                    args.__dict__[k] = v
+                logger.success(f'Args loaded from {args.args_file}')
     
-    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s)
+    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, graph_placeholders)
     model = model.to(args.device)
     if args.load_model:
         logger.info("Loading model")

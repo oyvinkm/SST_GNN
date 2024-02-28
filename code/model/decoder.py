@@ -102,7 +102,7 @@ class Decoder(nn.Module):
             node_mask = self.m_ids[-1][t]
             graph.x = z[:len(node_mask)]
             b_lst.append(graph)
-        return Batch.from_data_list(b_lst)
+        return Batch.from_data_list(b_lst).to(self.args.device)
 
     def forward(self, latent_vec):
         # Set edge weights to 1
