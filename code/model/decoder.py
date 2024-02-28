@@ -12,9 +12,10 @@ except:
     from .utility import MessagePassingLayer, unpool_edge, Unpool, LatentVecLayer
 
 class Decoder(nn.Module):
-    def __init__(self, args, m_ids, m_gs, e_s):
+    def __init__(self, args, m_ids, m_gs, e_s, graph_placeholder):
         super(Decoder, self).__init__()
         self.args = args
+        self.graph_placeholder = graph_placeholder
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
         self.max_hidden_dim = args.hidden_dim * 2 ** args.ae_layers
@@ -75,32 +76,44 @@ class Decoder(nn.Module):
     #     x = self.batch_to_sparse(x)
     #     e = self.batch_to_sparse(e)
     #     return x, e
+        
     
-    def trim_nodes(self, b_data):
-        b_lst = Batch.to_data_list(b_data)
-        data_lst = []
-        for idx, data in enumerate(b_lst):
-            node_mask = self.m_ids[-1][data.trajectory]
-            # edge_mask = self.m_gs[-1][data.trajectory].shape[-1]
-            data.x = data.x[:len(node_mask)]
-            data.weights = data.weights[:len(node_mask)]
-            # data.edge_attr = data.edge_attr[:edge_mask]
-            data_lst.append(data)
-        return Batch.from_data_list(data_lst)
+    # def trim_nodes(self, b_data):
+    #     b_lst = Batch.to_data_list(b_data)
+    #     data_lst = []
+    #     for idx, data in enumerate(b_lst):
+    #         node_mask = self.m_ids[-1][data.trajectory]
+    #         # edge_mask = self.m_gs[-1][data.trajectory].shape[-1]
+    #         data.x = data.x[:len(node_mask)]
+    #         data.weights = data.weights[:len(node_mask)]
+    #         # data.edge_attr = data.edge_attr[:edge_mask]
+    #         data_lst.append(data)
+    #     return Batch.from_data_list(data_lst)
     
     # def batch_to_sparse(self, z):
     #     z = z.transpose(1,2)
     #     z = z.contiguous().view(-1, self.args.latent_dim)
     #     return z
+                
+    def construct_batch(self, latent_vec):
+        b_lst = []
+        for z, t in latent_vec:
+            graph = self.graph_placeholder[t].clone()
+            node_mask = self.m_ids[-1][t]
+            graph.x = z[:len(node_mask)]
+            b_lst.append(graph)
+        return Batch.from_data_list(b_lst)
 
-    def forward(self, b_data, z):
+    def forward(self, latent_vec):
         # Set edge weights to 1
-        b_data.weights = torch.ones_like(b_data.weights)
-        if self.args.latent_space:
-            z_x = self.up_mlp(z).transpose(1,2)
-            z_x = self.latent_up_mlp(z_x)
-            b_data.x = z_x.contiguous().view(-1, self.args.latent_dim)
-        b_data = self.trim_nodes(b_data)
+        #b_data.weights = torch.ones_like(b_data.weights)
+        latent_vec.z = self.up_mlp(latent_vec.z).transpose(1,2)
+        latent_vec.z = self.latent_up_mlp(latent_vec.z)
+        logger.debug(f'{latent_vec=} before constructing batch')
+        # Should be shape (B, |V|_max, latent_dim): 
+        b_data = self.construct_batch(latent_vec)
+        # b_data.x = z_x.contiguous().view(-1, self.args.latent_dim)
+        # b_data = self.trim_nodes(b_data)
         logger.debug(f'{b_data=}')
         b_data = self.mpl_bottom(b_data)
         for i in range(self.ae_layers):

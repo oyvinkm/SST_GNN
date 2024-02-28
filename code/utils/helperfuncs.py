@@ -1,6 +1,7 @@
 """ Module just to build optimizer"""
 from torch import optim
 
+
 def build_optimizer(args, params):
     weight_decay = args.weight_decay
     filter_fn = filter(lambda p: p.requires_grad, params)
@@ -13,6 +14,9 @@ def Merge(dict1, dict2):
     return res
 
 def merge_dataset_stats(train, val, test):
+    graph_placeholders = Merge(Merge(train.graph_placeholders, 
+                                    test.graph_placeholders), 
+                                    val.graph_placeholders)
     train_id, train_g, train_e = train._get_pool()
     test_id, test_g, test_e = test._get_pool()
     val_id, val_g, val_e = val._get_pool()
@@ -29,5 +33,4 @@ def merge_dataset_stats(train, val, test):
         m_gs.append(Merge(Merge(train_g[i], test_g[i]), val_g[i]))
     for i in range(len(train_e)):
         e_s.append(Merge(Merge(train_e[i], test_e[i]), val_e[i]))
-    return m_ids, m_gs, e_s, max_latent_nodes, max_latent_edges
-
+    return m_ids, m_gs, e_s, max_latent_nodes, max_latent_edges, graph_placeholders

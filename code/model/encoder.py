@@ -9,9 +9,9 @@ from torch_geometric.data import Batch
 from loguru import logger
 import os
 try:
-    from utility import MessagePassingLayer, pool_edge, Unpool, LatentVecLayer
+    from utility import MessagePassingLayer, pool_edge, Unpool, LatentVecLayer, LatentVector
 except:
-    from .utility import MessagePassingLayer, pool_edge, Unpool, LatentVecLayer
+    from .utility import MessagePassingLayer, pool_edge, Unpool, LatentVecLayer, LatentVector
     
 
 
@@ -129,7 +129,9 @@ class Encoder(nn.Module):
             # z_edges = self.sample(mu_edges, log_var_edges)
             # kl_edges = torch.mean(-0.5 * torch.sum(1+log_var_edges-mu_edges**2-log_var_edges.exp(), dim=1), dim=0)
             # logger.debug(f'{z_nodes.shape}, {z_edges.shape}')
-            return kl, z_nodes , b_data
+            logger.debug(f'z before returning from encoder: {type(z_nodes)=} {z_nodes.shape}')
+            z = LatentVector(z_nodes, b_data.trajectory)
+            return kl, z , b_data
 
         else:
             x_t = self.node_latent_mlp(b_data).transpose(1,2)
