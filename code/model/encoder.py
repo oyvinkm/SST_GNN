@@ -138,7 +138,7 @@ class Encoder(nn.Module):
             z_nodes = self.mlp_mu_nodes(x_t)
             kl = None
             z = LatentVector(z_nodes, b_data.trajectory)
-            return kl, z_nodes, b_data
+            return kl, z, b_data
 
         #self.save_bdata(b_data)
 

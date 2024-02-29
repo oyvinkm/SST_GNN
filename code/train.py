@@ -64,7 +64,7 @@ def train(model, train_loader, val_loader, optimizer, args):
             # b_data = augment_batch(b_data)
             logger.debug(f'{b_data=}')
             pred, kl = model(b_data)
-            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+            rec_loss_node = criterion(pred.x, batch.x)
             loss = beta*kl + rec_loss_node
             loss.backward()  # backpropagate loss
             optimizer.step()
@@ -120,7 +120,7 @@ def validate(model, val_loader, criterion, epoch, args):
         b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+        rec_loss_node = criterion(pred.x, batch.x)
         #rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
@@ -158,7 +158,8 @@ def test(model, test_loader, args):
         pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
-        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+        # NOTE: CHANGE THIS FOR CALCULATING LOSS ON OTHER THINGS
+        rec_loss_node = criterion(pred.x, batch.x)
         # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()

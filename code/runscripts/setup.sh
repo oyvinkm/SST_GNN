@@ -7,10 +7,10 @@ day="$(date +"%d-%m-%y")"
 prefix="../logs"
 export TF_ENABLE_ONEDNN_OPTS=0
 python run.py \
-    -epochs 30 \
-    -ae_layers 3 \
+    -epochs 50 \
+    -ae_layers 4 \
     -hidden_dim 128 \
-    -logger_lvl DEBUG \
+    -logger_lvl INFO \
     -progress_bar True \
     -loss LMSE \
     -alpha 1. \
@@ -22,5 +22,6 @@ python run.py \
     -loss_step 1 \
     -log_step 1 \
     #-load_model True \
-    #-model_file ../logs/model_chkpoints/25-02-24/model_2024_02_25-16.25/model.pt \
+    #-args_file ../logs/args/28-02-24/args_2024_02_28-19.59.json \
+    #-model_file ../logs/model_chkpoints/28-02-24/model_2024_02_28-19.59/model.pt \
     #-make_gif True \

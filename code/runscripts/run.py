@@ -5,13 +5,15 @@ import os
 import sys
 import warnings
 import copy
-from datetime import datetime
 import torch
+import json
+
 from loguru import logger
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import ParameterGrid, train_test_split
-
+from datetime import datetime
 from random import choice
+
 sys.path.append('../')
 sys.path.append('dataprocessing')
 sys.path.append('model')
@@ -67,7 +69,7 @@ parser.add_argument('-num_blocks', type=int, default=1)
 parser.add_argument('-num_workers', type=int, default=1)
 parser.add_argument('-n_nodes', type=int, default=0)
 parser.add_argument('-opt', type=str, default='adam')
-parser.add_argument('-out_feature_dim', type=none_or_int, default=11)
+parser.add_argument('-out_feature_dim', type=none_or_int, default=54)
 parser.add_argument('-pool_strat', type=str, default='SAG')
 parser.add_argument('-progress_bar', type=t_or_f, default=False)
 parser.add_argument('-random_search', type=t_or_f, default=False)
@@ -139,26 +141,28 @@ def main():
 
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
-
+    logger.info(f'{val_data[0]}')
     if args.args_file is not None:
         if os.path.isfile(args.args_file):
             with open(args.args_file, 'r') as f:
                 args_dict = json.loads(f.read())
                 for k, v in args_dict.items():
-                    if k in ['load_model', 'make_gif']:
+                    if k in ['load_model', 'make_gif', 'device', 'model_file', 'args_file']:
                         continue
+                    logger.info(f'{k} : {v}')
                     args.__dict__[k] = v
                 logger.success(f'Args loaded from {args.args_file}')
     
     model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, graph_placeholders)
+    logger.success(f'Device {args.device}')
     model = model.to(args.device)
     if args.load_model:
         logger.info("Loading model")
         try:
-            model.load_state_dict(torch.load(args.model_file))
+            model.load_state_dict(torch.load(args.model_file, map_location=args.device))
             logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
-        except:
-            logger.error(f'Unable to load model from {args.model_file}')
+        except e:
+            logger.error(f'Unable to load model from {args.model_file}, because {e}')
 
     if args.make_gif:
         logger.success('Making a gif <3')

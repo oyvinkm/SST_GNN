@@ -12,6 +12,7 @@ import umap.umap_ as umap
 from sklearn.manifold import TSNE
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch_geometric.data import Batch
+from torch.nn import functional as F
 from torch_geometric.utils import to_networkx
 from matplotlib import tri as mtri
 from matplotlib import animation
@@ -63,6 +64,9 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
 
         bb_min = gs[0].x[:, 0:2].min() # first two columns are velocity
         bb_max = gs[0].x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
+
+        bb_min_pred = pred[0].x[:, 0:2].min() # first two columns are velocity
+        bb_max_pred = pred[0].x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
                                           # gs and prediction plots
         bb_min_evl = evl[0].x[:, 0:2].min()  # first two columns are velocity
         bb_max_evl = evl[0].x[:, 0:2].max()  # use max and min velocity of gs dataset at the first step for both 
@@ -83,6 +87,7 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
             elif (count == 1):
                 velocity = pred[step].x[:, 0:2]
                 title = 'Reconstruction:'
+                bb_min, bb_max = bb_min_pred, bb_max_pred
             else: 
                 velocity = evl[step].x[:, 0:2]
                 title = 'Error: (Reconstruction - Ground truth)'
@@ -134,14 +139,15 @@ def make_gif(model, dataset, args):
 
     for data in dataset:
         with torch.no_grad():
+            data.x = F.normalizer(data.x)
             pred_data = data.clone()
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
             PRED.append(pred)
             DIFF.append(data)
-            DIFF[-1].x = pred.x.to(args.device) - data.x.to(args.device)
+            DIFF[-1].x[:,:2] = pred.x[:,:2].to(args.device) - data.x[:,:2].to(args.device)
     logger.info("processing done...")
     gif_name = args.model_file
-    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 5)
     logger.success("gif complete...")
 
 def draw_graph(g, save = False, args = None):
