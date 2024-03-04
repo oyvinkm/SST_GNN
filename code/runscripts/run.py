@@ -53,6 +53,7 @@ parser.add_argument('-instance_id', type=int, default=1)
 parser.add_argument('-latent_space', type=t_or_f, default=True)
 parser.add_argument('-logger_lvl', type=str, default='INFO')
 parser.add_argument('-loss', type=none_or_str, default='LMSE')
+parser.add_argument('-masked_loss', type=t_or_f, default = True)
 parser.add_argument('-load_model', type=t_or_f, default=False)
 parser.add_argument('-loss_step', type=int, default=10)
 parser.add_argument('-log_step', type=int, default=10)
@@ -116,6 +117,16 @@ def main():
         args.device = "cpu"
     logger.info(f"Device : {args.device}")
     logger.debug(f'SAVE_MODEL : {args.save_model_dir}')
+    if args.args_file is not None:
+        if os.path.isfile(args.args_file):
+            with open(args.args_file, 'r') as f:
+                args_dict = json.loads(f.read())
+                for k, v in args_dict.items():
+                    if k in ['load_model', 'make_gif', 'device', 'model_file', 'args_file']:
+                        continue
+                    logger.info(f'{k} : {v}')
+                    args.__dict__[k] = v
+                logger.success(f'Args loaded from {args.args_file}')
 
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
@@ -142,16 +153,6 @@ def main():
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     logger.info(f'{val_data[0]}')
-    if args.args_file is not None:
-        if os.path.isfile(args.args_file):
-            with open(args.args_file, 'r') as f:
-                args_dict = json.loads(f.read())
-                for k, v in args_dict.items():
-                    if k in ['load_model', 'make_gif', 'device', 'model_file', 'args_file']:
-                        continue
-                    logger.info(f'{k} : {v}')
-                    args.__dict__[k] = v
-                logger.success(f'Args loaded from {args.args_file}')
     
     model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, graph_placeholders)
     logger.success(f'Device {args.device}')
@@ -165,9 +166,10 @@ def main():
             logger.error(f'Unable to load model from {args.model_file}, because {e}')
 
     if args.make_gif:
+        gif_data = copy.deepcopy(val_data[:100])
         logger.success('Making a gif <3')
         args.model_file = 'test_full_traj'
-        make_gif(model, val_data, args)
+        make_gif(model, gif_data, args)
         logger.success('Made a gif <3')
         exit()
 
@@ -176,7 +178,7 @@ def main():
 
     #dataset = dataset[:250] # The rest of the dataset have little variance
 
-    # Split data into train and test
+    # # Split data into train and test
     train_data, test_data = train_test_split(val_data, test_size=args.test_ratio)
 
     # Split training data into train and validation data
