@@ -38,6 +38,7 @@ def train(model, train_loader, val_loader, optimizer, args):
     best_val_loss = np.inf
     best_model = None
     beta = 1e-3
+    mask_weight = .5
     alpha = .5
     if args.progress_bar:
         manager = enlighten.get_manager()
@@ -62,10 +63,16 @@ def train(model, train_loader, val_loader, optimizer, args):
             batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
+            mask = torch.where(batch.x[:,:2] < 0)
             logger.debug(f'{b_data=}')
             pred, kl = model(b_data)
-            rec_loss_node = criterion(pred.x, batch.x)
-            loss = beta*kl + rec_loss_node
+            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+            mask_loss_node = criterion(pred.x[:,:2][mask], batch.x[:,:2][mask])
+            loss = beta*kl + rec_loss_node + mask_weight*mask_loss_node
+            if loss.isnan():
+                logger.debug(f'Loss has become NaN after {epoch} epochs')
+                torch.save(pred.to('cpu'), 'NaN_tensor.pt')
+                exit()
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -120,7 +127,7 @@ def validate(model, val_loader, criterion, epoch, args):
         b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        rec_loss_node = criterion(pred.x, batch.x)
+        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
         #rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
@@ -159,7 +166,7 @@ def test(model, test_loader, args):
         if idx == 0 and args.save_mesh:
             save_mesh(pred, batch, 'test', args)
         # NOTE: CHANGE THIS FOR CALCULATING LOSS ON OTHER THINGS
-        rec_loss_node = criterion(pred.x, batch.x)
+        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
         # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()

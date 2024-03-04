@@ -79,6 +79,7 @@ class MeshDataset(Dataset):
     cells = g.cells
     weights = torch.ones((len(m_ids[-1]), 1))
     mesh_pos = g.mesh_pos
+    for m_id in m_ids: mesh_pos = mesh_pos[m_id]
     t = 0
     trajectory = trajectory
     self.graph_placeholders[trajectory] = Data(x = x, edge_index = edge_index, 

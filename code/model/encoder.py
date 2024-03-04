@@ -32,11 +32,14 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList()
         self.pad = Unpool()
 
+        self.node_encoder_1 = Linear(self.in_dim_node, self.hidden_dim)
+        self.act_1 = LeakyReLU()
+        self.node_encoder_2 = Linear(self.hidden_dim, self.hidden_dim)
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
             LeakyReLU(),
             Linear(self.hidden_dim, self.hidden_dim),
-            LayerNorm(self.hidden_dim),
+            #LayerNorm(self.hidden_dim),
         )
         # self.edge_encoder = Sequential(Linear(self.in_dim_edge , self.hidden_dim),
         #                       ReLU(),
@@ -101,34 +104,41 @@ class Encoder(nn.Module):
         #                       ) 
 
     def forward(self, b_data, Train = True):
-        b_data.x = self.node_encoder(b_data.x)
+        if torch.any(torch.isnan(b_data.x)):
+            logger.error(f'something is nan when entering encoder')
+            exit()
+        # b_data.x = self.node_encoder(b_data.x)
+        b_data.x = self.node_encoder_1(b_data.x)
+        if torch.any(torch.isnan(b_data.x)):
+            torch.save(self.node_encoder_1.weight, 'encoder_1_weight.pt')
+            logger.error(f'something is nan in encoder afte node encoding 1')
+            exit()
+        b_data.x = self.act_1(b_data.x)
+        if torch.any(torch.isnan(b_data.x)):
+            logger.error(f'something is nan in encoder afte LeakyRelu')
+            exit()
+        b_data.x = self.node_encoder_2(b_data.x)
+        if torch.any(torch.isnan(b_data.x)):
+                torch.save(self.node_encoder_2.weight, 'encoder_2_weight.pt')
+                logger.error(f'something is nan in encoder afte node encoder 2')
+                exit()
         # b_data.edge_attr = self.edge_encoder(b_data.edge_attr)
-
-        for i in range(self.ae_layers): 
+        for i in range(self.ae_layers):
             b_data = self.layers[i](b_data)
+            if torch.any(torch.isnan(b_data.x)):
+                logger.error(f'something is nan in encoder path no {i}')
+                exit()
         b_data = self.bottom_layer(b_data) #
         b_data = self.pad_nodes_edges(b_data)
         if Train:
             x_t = self.node_latent_mlp(b_data).transpose(1,2)
             logger.debug(f'Latent nodes : {x_t.shape}')
-            # e_t = self.edge_latent_mlp(b_data)
-            # logger.debug(f'Latent edges : {e_t.shape}')
             # Sampling latent vector for nodes and calculating KL-divergence)
             mu_nodes = self.mlp_mu_nodes(x_t)
             log_var_nodes = self.mlp_logvar_nodes(x_t)
             z_nodes = self.sample(mu_nodes, log_var_nodes)
             kl = torch.mean(-0.5 * torch.sum(1+log_var_nodes-mu_nodes**2-log_var_nodes.exp(), dim=0), dim=1)
-            # x_t, e_t = self.batch_to_dense_transpose(b_data)
-            # mu_nodes = self.mlp_mu_nodes(x_t)
-            # log_var_nodes = self.mlp_logvar_nodes(x_t)
-            # logger.debug(f'Transposed : {x_t.shape}')
-            # z_nodes = self.sample(mu_nodes, log_var_nodes)
-            # kl_nodes = torch.mean(-0.5 * torch.sum(1+log_var_nodes-mu_nodes**2-log_var_nodes.exp(), dim=1), dim=0)
-            # mu_edges = self.mlp_mu_edges(e_t)
-            # log_var_edges = self.mlp_logvar_edges(e_t)
-            # z_edges = self.sample(mu_edges, log_var_edges)
-            # kl_edges = torch.mean(-0.5 * torch.sum(1+log_var_edges-mu_edges**2-log_var_edges.exp(), dim=1), dim=0)
-            # logger.debug(f'{z_nodes.shape}, {z_edges.shape}')
+        
             logger.debug(f'z before returning from encoder: {type(z_nodes)=} {z_nodes.shape}')
             z = LatentVector(z_nodes, b_data.trajectory)
             return kl, z , b_data
@@ -200,13 +210,17 @@ class Res_down(nn.Module):
             g = self.m_g[data.trajectory]
             mask = self.m_id[data.trajectory]
             data.x = data.x[mask]
+            data.mesh_pos = data.mesh_pos[mask]
             data.weights = data.weights[mask]
-            data.edge_index, _ = pool_edge(mask, g, data.edge_attr)
+            #data.edge_index, _ = pool_edge(mask, g, data.edge_attr)
+            data.edge_index = g
             data_lst.append(data)
         return Batch.from_data_list(data_lst).to(self.args.device) 
     
     def forward(self, b_data):
         # Removed edge_attr
+        if torch.any(torch.isnan(b_data.x)):
+            logger.error(f'something is nan in start of Res_down')
         b_skip = self._bi_pool_batch(b_data.clone())
         b_skip = self.mpl_skip(b_skip) # out = channel_out
         b_data = self.mpl1(b_data)
@@ -215,5 +229,7 @@ class Res_down(nn.Module):
         b_data.x = self.bn_nodes(b_data.x + b_skip.x)
         # b_data.edge_attr = self.bn_edges(b_data.edge_attr + b_skip.edge_attr)
         b_data.x = self.act1(b_data.x)
+        if torch.any(torch.isnan(b_data.x)):
+            logger.error(f'something is nan at the end of Res_down')
         # b_data.edge_attr = self.act2(b_data.edge_attr)
         return b_data

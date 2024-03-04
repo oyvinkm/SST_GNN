@@ -136,10 +136,13 @@ def make_gif(model, dataset, args):
     PRED = []
     GT = copy.deepcopy(dataset)
     DIFF = []
-
-    for data in dataset:
+    logger.info(len(dataset))
+    for idx, data in enumerate(dataset):
+        if idx == 100:
+            break
         with torch.no_grad():
-            data.x = F.normalizer(data.x)
+            logger.info(f'Making for {idx}')
+            GT[idx].x = F.normalize(GT[idx].x)  
             pred_data = data.clone()
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
             PRED.append(pred)

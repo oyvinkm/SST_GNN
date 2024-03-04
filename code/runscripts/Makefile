@@ -4,6 +4,8 @@ clean:
 run:
 	@sbatch dual_latent.sh
 
+gif:
+	@sbatch run_gif.sh
 
 # If we dont want to wait for the queue and we don't need any major ressources
 _run:

@@ -4,6 +4,7 @@ from torch import nn
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
 from torch_geometric.data import Batch
 from torch_geometric.nn.norm import BatchNorm
+from torch_geometric.nn.unpool import knn_interpolate
 from loguru import logger
 
 try:
@@ -118,6 +119,9 @@ class Decoder(nn.Module):
         b_data = self.mpl_bottom(b_data)
         for i in range(self.ae_layers):
            b_data = self.layers[i](b_data)
+           if torch.any(torch.isnan(b_data.x)):
+                logger.error(f'something is nan in decoder path no {i}')
+                exit()
         b_data = self.final_layer(b_data) #
         b_data.x = self.out_node_decoder(b_data.x) #
         # b_data.edge_attr = self.out_edge_encoder(b_data.edge_attr)
@@ -149,6 +153,7 @@ class Res_up(nn.Module):
         for idx, data in enumerate(b_lst):
             g, mask = self.m_g[data.trajectory], self.m_id[data.trajectory]
             up_nodes = self.up_nodes if isinstance(self.up_nodes, int) else len(self.up_nodes[data.trajectory])
+            
             data.x = self.unpool(data.x, up_nodes, mask)
             data.weights = self.unpool(data.weights, up_nodes, mask)
             # data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx[data.trajectory], self.args)

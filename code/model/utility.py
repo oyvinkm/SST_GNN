@@ -10,7 +10,7 @@ from functools import wraps
 from loguru import logger
 from torch_geometric.data import Batch
 from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
-from torch_geometric.nn.conv import GraphConv, MessagePassing
+from torch_geometric.nn.conv import GraphConv, MessagePassing, SAGEConv
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import degree, coalesce,to_dense_adj
 from torch_scatter import scatter
@@ -170,13 +170,13 @@ class MessagePassingBlock(torch.nn.Module):
                 self.processor.append(processor_layer(self.channel_out, self.channel_out))
 
     def build_processor_model(self):
-        return GCNConv
+        return SAGEConv
 
     def forward(self, b_data):
         # Step 1: encode node/edge features into latent node/edge embeddings
         # step 2: perform message passing with latent node/edge embeddings
         for i in range(self.num_blocks):
-            b_data.x = self.processor[i](b_data)
+            b_data.x = self.processor[i](b_data.x, b_data.edge_index)
         return b_data
 
 class WeightedEdgeConv(MessagePassing):

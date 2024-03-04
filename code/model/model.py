@@ -43,7 +43,13 @@ class MultiScaleAutoEncoder(nn.Module):
         
     def forward(self, b_data, Train=True):
         kl, latent_vec, b_data = self.encoder(b_data, Train)
+        if torch.any(torch.isnan(b_data.x)):
+            logger.error(f'something is nan after encoder')
+            exit()
         b_data = self.decoder(latent_vec)
+        if torch.any(torch.isnan(b_data.x)):
+            logger.error(f'something is nan after decoder')
+            exit()
         return b_data, kl
     
 
