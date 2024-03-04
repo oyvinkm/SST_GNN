@@ -13,7 +13,7 @@ except:
     from .utility import MessagePassingLayer, unpool_edge, Unpool, LatentVecLayer
 
 class Decoder(nn.Module):
-    def __init__(self, args, m_ids, m_gs, e_s, graph_placeholder):
+    def __init__(self, args, m_ids, m_gs, e_s, m_pos, graph_placeholder):
         super(Decoder, self).__init__()
         self.args = args
         self.graph_placeholder = graph_placeholder
@@ -53,7 +53,8 @@ class Decoder(nn.Module):
                                       m_id = m_ids[args.ae_layers - i - 1],
                                       m_g = m_gs[args.ae_layers - i - 1],
                                       e_idx = e_s[args.ae_layers -i - 1],
-                                      up_nodes = up_nodes)
+                                      up_nodes = up_nodes,
+                                      m_pos_new=m_pos[args.ae_layers - i - 1])
                                       )
 
         self.final_layer = MessagePassingLayer(hidden_dim = self.hidden_dim, latent_dim = self.hidden_dim, args=self.args)
@@ -130,13 +131,14 @@ class Decoder(nn.Module):
     
 class Res_up(nn.Module):
 
-    def __init__(self, channel_in, channel_out, args, m_id, m_g, e_idx, up_nodes):
+    def __init__(self, channel_in, channel_out, args, m_id, m_g, e_idx, up_nodes, m_pos_new):
         super(Res_up, self).__init__()
         self.m_id = m_id
         self.m_g = m_g
         self.e_idx = e_idx
         self.args = args
         self.up_nodes = up_nodes
+        self.m_pos_new = m_pos_new
         self.mpl1 = MessagePassingLayer(channel_in, channel_out//2, args)
         self.mpl2 = MessagePassingLayer(channel_out//2, channel_out, args)
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args)
@@ -154,7 +156,10 @@ class Res_up(nn.Module):
             g, mask = self.m_g[data.trajectory], self.m_id[data.trajectory]
             up_nodes = self.up_nodes if isinstance(self.up_nodes, int) else len(self.up_nodes[data.trajectory])
             
-            data.x = self.unpool(data.x, up_nodes, mask)
+            #data.x = self.unpool(data.x, up_nodes, mask)
+            m_pos = self.m_pos_new[data.trajectory]
+            data.mesh_pos = m_pos
+            data.x = knn_interpolate(data.x, m_pos[mask], m_pos)
             data.weights = self.unpool(data.weights, up_nodes, mask)
             # data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx[data.trajectory], self.args)
             data.edge_index = g

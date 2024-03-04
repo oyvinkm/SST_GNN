@@ -34,7 +34,7 @@ class MeshDataset(Dataset):
     self.m_ids = [{} for _ in range(self.layer_num)]
     self.m_gs = [{} for _ in range(self.layer_num + 1)]
     self.e_s = [{} for _ in range(self.layer_num )] 
-    self.m_pos = [{} for _ in range(self.layer_num )] 
+    self.m_pos = [{} for _ in range(self.layer_num + 1)] 
     self.graph_placeholders = {t : None for t in self.trajectories}
     self._get_bi_stride()
     super().__init__(self.data_dir)
@@ -115,9 +115,10 @@ class MeshDataset(Dataset):
     if m_gs[-1].shape[-1] > self.max_latent_edges:
         self.max_latent_edges = m_gs[-1].shape[-1]
     mesh_pos = g.mesh_pos
+    self.m_pos[0][str(traj)] = mesh_pos
     for i in range(len(m_ids)):
       mesh_pos = mesh_pos[m_ids[i]]
-      self.m_pos[i][str(traj)] = mesh_pos
+      self.m_pos[i + 1][str(traj)] = mesh_pos
       self.m_ids[i][str(traj)] = torch.tensor(m_ids[i])
     for j in range(len(m_gs)):
       self.m_gs[j][str(traj)] = m_gs[j]

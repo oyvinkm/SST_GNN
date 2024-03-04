@@ -32,11 +32,11 @@ class MultiScaleAutoEncoder(nn.Module):
     Decode: G_l -> MPL -> Unpool .... -> MPL -> MLP -> G'_0 -> 
     """
 
-    def __init__(self, args, m_ids, m_gs, e_s, graph_placeholder):
+    def __init__(self, args, m_ids, m_gs, e_s, m_pos, graph_placeholder):
         super().__init__()
         self.args = args
         self.encoder = Encoder(args, m_ids, m_gs)
-        self.decoder = Decoder(args, m_ids, m_gs, e_s, graph_placeholder)
+        self.decoder = Decoder(args, m_ids, m_gs, e_s, m_pos, graph_placeholder)
         # self.placeholder = Batch.from_data_list([Data(x=torch.ones(len(m_ids[-1]), args.latent_dim), 
         #                                                            edge_index = m_gs[-1],
         #                                                            weights = torch.ones(len(m_ids[-1])))])
