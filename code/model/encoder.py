@@ -63,7 +63,7 @@ class Encoder(nn.Module):
                                                 bottom=True)
         
         self.node_latent_mlp = LatentVecLayer(hidden_dim=self.hidden_dim * 2 ** self.ae_layers,
-                                              latent_dim = self.latent_dim, max_dim = self.latent_node_dim, type='node')
+                                              latent_dim = self.latent_dim, max_dim = self.latent_node_dim)
         # self.edge_latent_mlp = LatentVecLayer(hidden_dim=self.hidden_dim * 2 ** self.ae_layers,
         #                                       latent_dim = self.latent_dim, max_dim = self.latent_edge_dim, type='edge')
         # self.mlp_mu_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
@@ -160,12 +160,15 @@ class Res_down(nn.Module):
         self.pool = SAGPooling(in_channels = channel_out // 2, ratio = ratio)
         # self.bn_edges = BatchNorm(in_channels = channel_out)
 
-    def _learnable_pool(self, b_data):
+    def _learnable_pool(self, b_data, skip = False):
         # x, connect_out.edge_index, connect_out.edge_attr,connect_out.batch, perm, score
         b_lst = Batch.to_data_list(b_data)
         data_lst = []
         for idx, data in enumerate(b_lst):
-            x, edge_index, _, _, perm, _ = self.pool(x = data.x, edge_index = data.edge_index)
+            if skip:
+                x, edge_index, _, _, perm, _ = self.pool_skip(x = data.x, edge_index = data.edge_index)
+            else:
+                x, edge_index, _, _, perm, _ = self.pool(x = data.x, edge_index = data.edge_index)
             data.x = x
             data.edge_index = edge_index
             data.mesh_pos = data.mesh_pos[perm]
@@ -194,7 +197,7 @@ class Res_down(nn.Module):
             logger.error(f'something is nan in start of Res_down')
         # NOTE: Implemented learnable pooling
         # b_skip = self._bi_pool_batch(b_data.clone())
-        b_skip = self._learnable_pool(b_data.clone())
+        b_skip = self._learnable_pool(b_data.clone(), skip = True)
         b_skip = self.mpl_skip(b_skip) # out = channel_out
         b_data = self.mpl1(b_data)
         # b_data = self._bi_pool_batch(b_data)

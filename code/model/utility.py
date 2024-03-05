@@ -466,70 +466,43 @@ class ProcessorLayer(MessagePassing):
 
 
 class LatentVecLayer(nn.Module):
-    def __init__(self, hidden_dim, latent_dim, max_dim, type):
+    def __init__(self, hidden_dim, latent_dim, max_dim):
         super(LatentVecLayer, self).__init__()
         self.hidden_dim = hidden_dim 
         self.latent_dim = latent_dim
         self.max_dim = max_dim
-        self.type = type
 
         self.hidden_dim_mlp = Sequential(Linear(self.hidden_dim, self.hidden_dim // 2),
                               #ReLU(),
                               Linear(self.hidden_dim // 2, 1),
-                              LayerNorm(1)
                               )
         self.latent_dim_mlp = Sequential(Linear(self.max_dim, self.max_dim // 2),
                               #ReLU(),
                               Linear(self.max_dim // 2, self.latent_dim),
-                              LayerNorm(self.latent_dim)
                               )
         self.act = LeakyReLU()
 
     def forward(self, b_data):
         # Store b_data to transpoes each latent vec in batch
-        if self.type == 'edge':
-            b_data = b_data.clone()
-            edge_attr = b_data.edge_attr
-            logger.debug(f'working on edges : {edge_attr.shape}')
-            # Reduce hidden dimensions to 1 for each node 
-            
-            b_data.edge_attr = self.hidden_dim_mlp(edge_attr)
-            # Transpose 
-            logger.debug(f'after hidden_mlp {b_data.edge_attr.shape}')
-            edge_attr = self.batch_to_dense_transpose(b_data)
-            # Reduce to latent_dim
-            edge_attr = self.latent_dim_mlp(edge_attr)
-            logger.debug(f'After latent: {edge_attr.shape}')
-            # Return latent vector on shape (B, Latent_dim , 1)
-            return self.act(edge_attr)
-            #return self.act(edge_attr).transpose(1,2)
         
         b_data = b_data.clone()
         x = b_data.x
         logger.debug(f'working on nodes : {x.shape}')
         # Reduce hidden dimensions to 1 for each node 
-        b_data.x = self.hidden_dim_mlp(x)
-        logger.debug(f'after hidden_mlp {b_data.x.shape}')
+        x = self.hidden_dim_mlp(x)
+        logger.debug(f'after hidden_mlp {x.shape}')
         # Transpose 
-        x = self.batch_to_dense_transpose(b_data)
+        b_size = len(torch.unique(b_data.batch))
+        print(b_size)
+        print(self.max_dim)
+        x = x.view(b_size, self.max_dim)
+        # x = self.batch_to_dense_transpose(b_data)
         # Reduce to latent_dim
         x = self.latent_dim_mlp(x)
         logger.debug(f'After latent: {x.shape}')
         # Return latent vector
         #return self.act(x)
-        return self.act(x).transpose(1,2)
-        
-    
-    def batch_to_dense_transpose(self, b_data):
-        data_lst = Batch.to_data_list(b_data)
-        x_lst = []
-        for b in data_lst:
-            if self.type == 'edge':
-                x_lst.append(b.edge_attr.T)
-            else:
-                x_lst.append(b.x.T)
-        return torch.stack(x_lst)
-
+        return self.act(x).unsqueeze(dim = -1)
 
 class Unpool(nn.Module):
     """
