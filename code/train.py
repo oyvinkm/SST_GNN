@@ -243,11 +243,12 @@ def save_mesh(pred, truth, idx, args):
     fig.savefig(path, bbox_inches="tight")
     plt.close()
     logger.success(f'Mesh saved at {path}')
-    
+
+# NOTE: MIGHT NOT BE A GOOD IDEA TO REMOVE +1 FROM LOSS
 class LMSELoss(nn.Module):
     def __init__(self):
         super().__init__()
         self.mse = nn.MSELoss()
     
     def forward(self, pred, actual):
-        return torch.log(self.mse(pred, actual)+1) # +1 to keep the loss from under 0
+        return torch.log(self.mse(pred, actual)) # +1 to keep the loss from under 0

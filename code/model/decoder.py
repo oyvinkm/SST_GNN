@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU, SELU
 from torch_geometric.data import Batch
 from torch_geometric.nn.norm import BatchNorm
 from torch_geometric.nn.unpool import knn_interpolate
@@ -33,7 +33,7 @@ class Decoder(nn.Module):
 
         # |V| x 1 -> |V| -> H
         self.latent_up_mlp = Sequential(Linear(1, self.latent_dim // 2),
-                                        LeakyReLU(),
+                                        SELU(),
                                         Linear(self.latent_dim // 2, self.latent_dim))
         self.mpl_bottom = MessagePassingLayer(hidden_dim = args.latent_dim, 
                                               latent_dim=self.max_hidden_dim, 
@@ -60,7 +60,7 @@ class Decoder(nn.Module):
         self.final_layer = MessagePassingLayer(hidden_dim = self.hidden_dim, latent_dim = self.hidden_dim, args=self.args)
         self.out_node_decoder = Sequential(
             Linear(self.hidden_dim, self.hidden_dim // 2),
-            LeakyReLU(),
+            SELU(),
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
         )
@@ -143,8 +143,8 @@ class Res_up(nn.Module):
         self.mpl2 = MessagePassingLayer(channel_out//2, channel_out, args)
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args)
         self.unpool = Unpool()
-        self.act1 = nn.LeakyReLU()
-        self.act2 = nn.LeakyReLU()
+        self.act1 = SELU()
+        self.act2 = SELU()
         self.bn_nodes = BatchNorm(in_channels = channel_out)
         self.bn_edges = BatchNorm(in_channels = channel_out)
 
@@ -157,9 +157,10 @@ class Res_up(nn.Module):
             up_nodes = self.up_nodes if isinstance(self.up_nodes, int) else len(self.up_nodes[data.trajectory])
             
             #data.x = self.unpool(data.x, up_nodes, mask)
-            m_pos = self.m_pos_new[data.trajectory]
+            m_pos = self.m_pos_new[data.trajectory].to(self.args.device)
+            
+            data.x = knn_interpolate(data.x, data.mesh_pos, m_pos)
             data.mesh_pos = m_pos
-            data.x = knn_interpolate(data.x, m_pos[mask], m_pos)
             data.weights = self.unpool(data.weights, up_nodes, mask)
             # data.edge_index, data.edge_attr = unpool_edge(g, data.edge_attr, self.e_idx[data.trajectory], self.args)
             data.edge_index = g

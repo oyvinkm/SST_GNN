@@ -23,7 +23,7 @@ from dataprocessing.utils.loading import save_traj_pairs
 from model.model import MultiScaleAutoEncoder
 from utils.visualization import make_gif, plot_loss
 from utils.parserfuncs import none_or_str, none_or_int, none_or_float, t_or_f
-from utils.helperfuncs import build_optimizer, merge_dataset_stats
+from utils.helperfuncs import build_optimizer, merge_dataset_stats, fetch_random_args
 from train import test, train
 
 def apply_transform(args):
@@ -73,6 +73,7 @@ parser.add_argument('-opt', type=str, default='adam')
 parser.add_argument('-out_feature_dim', type=none_or_int, default=54)
 parser.add_argument('-pool_strat', type=str, default='SAG')
 parser.add_argument('-progress_bar', type=t_or_f, default=False)
+parser.add_argument('-pretext_task', type=t_or_f, default=False)
 parser.add_argument('-random_search', type=t_or_f, default=False)
 parser.add_argument('-residual', type=t_or_f, default=True)
 parser.add_argument('-save_args_dir', type=str, default='../logs/args/'+day)
@@ -121,8 +122,9 @@ def main():
         if os.path.isfile(args.args_file):
             with open(args.args_file, 'r') as f:
                 args_dict = json.loads(f.read())
+                ignored_keys = ['load_model', 'make_gif', 'device', 'model_file', 'args_file', 'random_search']
                 for k, v in args_dict.items():
-                    if k in ['load_model', 'make_gif', 'device', 'model_file', 'args_file']:
+                    if k in ignored_keys:
                         continue
                     logger.info(f'{k} : {v}')
                     args.__dict__[k] = v
@@ -138,7 +140,11 @@ def main():
         train_data[0].edge_attr.shape[1],
         train_data[0].x.shape[0]
     )
-    m_ids, m_gs, e_s, args.max_latent_nodes, args.max_latent_edges, graph_placeholders = merge_dataset_stats(train_data, test_data, val_data)
+    (m_ids, m_gs, 
+    e_s, m_pos, 
+    args.max_latent_nodes, 
+    args.max_latent_edges, 
+    graph_placeholders) = merge_dataset_stats(train_data, test_data, val_data)
    
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
@@ -154,7 +160,7 @@ def main():
     # Initialize Model
     logger.info(f'{val_data[0]}')
     
-    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, graph_placeholders)
+    model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, m_pos, graph_placeholders)
     logger.success(f'Device {args.device}')
     model = model.to(args.device)
     if args.load_model:
@@ -166,9 +172,9 @@ def main():
             logger.error(f'Unable to load model from {args.model_file}, because {e}')
 
     if args.make_gif:
-        gif_data = copy.deepcopy(val_data[:100])
+        gif_data = copy.deepcopy(val_data)
         logger.success('Making a gif <3')
-        args.model_file = 'test_full_traj'
+        args.model_file = datetime.now().strftime("%d-%m-%y")
         make_gif(model, gif_data, args)
         logger.success('Made a gif <3')
         exit()
@@ -176,10 +182,10 @@ def main():
     # Initialize optimizer and scheduler(?)
     optimizer = build_optimizer(args, model.parameters())
 
-    #dataset = dataset[:250] # The rest of the dataset have little variance
+    dataset = copy.deepcopy(val_data[:250]) # The rest of the dataset have little variance
 
     # # Split data into train and test
-    train_data, test_data = train_test_split(val_data, test_size=args.test_ratio)
+    train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
 
     # Split training data into train and validation data
     train_data, val_data = train_test_split(
@@ -268,25 +274,26 @@ if __name__ == "__main__":
 
     else:
         param_grid = {
-                'latent_dim': [128, 256], 
-                'lr' : [1e-4, 1e-5, 1e-6],
-                'ae_layers': [3, 4, 5],
-                'num_blocks': [1, 2, 3]
-                }
+            "mpl_layers" : [1, 2, 3],
+            "num_blocks" : [1, 2, 3],
+            "edge_conv" : [True, False],
+            "latent_dim": [128, 256, 512],
+            "ae_layers": [3, 4, 5],
+        }
         lst = list(ParameterGrid(param_grid))
-        my_bool = args.transform
 
-        while True:
-            rand_args = choice(lst)
-            lst.remove(rand_args)
-            args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
-            for key in rand_args.keys():
-                args.__dict__[key] = rand_args[key]
-                args.time_stamp += "_" + key + "-" + str(rand_args[key])
-            if args.transform:
+        my_bool = args.pretext_task
+
+        while len(lst) > 0:
+            args, lst = fetch_random_args(args, lst)
+            if args.pretext_task:
                 args = apply_transform(args)
-            logger.success(f"Doing the following config: {args.time_stamp}")
-            main()
+            logger.info(f"Doing the following config: {args.time_stamp}")
+            try:
+                main()
+            except ValueError:
+                print('ValueError, something is NaN')
+                continue
             logger.success("Done")
-            args.transform = my_bool
+            args.pretext_task = my_bool
     logger.success("process_done")

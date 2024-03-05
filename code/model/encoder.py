@@ -3,7 +3,8 @@ import torch
 
 import torch.nn.functional as F
 from torch import nn
-from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU
+from torch.nn import LayerNorm, Linear, ReLU, Sequential, LeakyReLU, SELU
+from torch_geometric.nn.pool import SAGPooling, TopKPooling
 from torch_geometric.nn.norm import BatchNorm
 from torch_geometric.data import Batch
 from loguru import logger
@@ -33,11 +34,11 @@ class Encoder(nn.Module):
         self.pad = Unpool()
 
         self.node_encoder_1 = Linear(self.in_dim_node, self.hidden_dim)
-        self.act_1 = LeakyReLU()
+        self.act_1 = SELU()
         self.node_encoder_2 = Linear(self.hidden_dim, self.hidden_dim)
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
-            LeakyReLU(),
+            SELU(),
             Linear(self.hidden_dim, self.hidden_dim),
             #LayerNorm(self.hidden_dim),
         )
@@ -47,13 +48,16 @@ class Encoder(nn.Module):
         #                       LayerNorm(self.hidden_dim)
         #                       )
         for i in range(self.ae_layers):
-            
-            self.layers.append(Res_down(
-                                        channel_in = self.hidden_dim * 2**i, 
+            ratio = .5
+            if i == self.ae_layers - 1:
+                ratio = self.max_latent_nodes
+
+            self.layers.append(Res_down(channel_in = self.hidden_dim * 2**i, 
                                         channel_out = self.hidden_dim * 2**(i + 1),
                                         m_id = self.m_ids[i],
                                         m_g = self.m_gs[i+1],
-                                        args = args))
+                                        args = args,
+                                        ratio = .5))
         self.bottom_layer = MessagePassingLayer(hidden_dim = self.hidden_dim * 2 ** self.ae_layers, 
                                                 latent_dim = self.hidden_dim * 2 ** self.ae_layers, 
                                                 args=self.args, 
@@ -69,7 +73,7 @@ class Encoder(nn.Module):
         #                       )
         self.mlp_mu_nodes = Linear(self.latent_dim, self.latent_dim)
         self.mlp_logvar_nodes = Sequential(Linear(self.latent_dim, self.latent_dim),
-                              ReLU(),
+                              SELU(),
                               LayerNorm(self.latent_dim)
                               )
         self.mlp_logvar_nodes = Linear(self.latent_dim, self.latent_dim)
@@ -112,7 +116,7 @@ class Encoder(nn.Module):
         if torch.any(torch.isnan(b_data.x)):
             torch.save(self.node_encoder_1.weight, 'encoder_1_weight.pt')
             logger.error(f'something is nan in encoder afte node encoding 1')
-            exit()
+            raise ValueError('Values in tensor is NaN')
         b_data.x = self.act_1(b_data.x)
         if torch.any(torch.isnan(b_data.x)):
             logger.error(f'something is nan in encoder afte LeakyRelu')
@@ -172,8 +176,7 @@ class Encoder(nn.Module):
             # data.edge_attr = self.pad(data.edge_attr, self.latent_edge_dim, np.arange(0, data.edge_attr.shape[0]))
             data_lst.append(data)
         return Batch.from_data_list(data_lst).to(self.args.device)
-    
-    @torch.no_grad()
+
     def batch_to_dense_transpose(self, b_data):
         data_lst = Batch.to_data_list(b_data)
         b_node_lst = []
@@ -189,18 +192,30 @@ class Encoder(nn.Module):
 
 class Res_down(nn.Module):
     """Take m_id and m_g in forwad not"""
-    def __init__(self, channel_in, channel_out, args, m_id, m_g):
+    def __init__(self, channel_in, channel_out, args, m_id, m_g, ratio=.5):
         super(Res_down, self).__init__()
         self.m_id = m_id
         self.m_g = m_g
         self.args = args
         self.mpl1 = MessagePassingLayer(channel_in, channel_out // 2, args)
         self.mpl2 = MessagePassingLayer(channel_out // 2, channel_out, args)
-        self.act1 = nn.ReLU()
+        self.act1 = SELU()
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args) # skip
-        self.act2 = nn.ReLU()
+        self.act2 = SELU()
         self.bn_nodes = BatchNorm(in_channels = channel_out)
+        self.pool_skip = SAGPooling(in_channel = channel_in, ratio = ratio)
+        self.pool = SAGPooling(channel_out // 2, ratio = ratio)
         # self.bn_edges = BatchNorm(in_channels = channel_out)
+
+    def _learnable_pool(self, b_data):
+        # x, connect_out.edge_index, connect_out.edge_attr,connect_out.batch, perm, score
+        x, edge_index, _, _, perm, _ = self.pool(x = b_data.x, edge_index = b_data.edge_index, batch = b_data.batch)
+        b_data.x = x
+        b_data.edge_index = edge_index
+        b_data.mesh_pos = b_data.mesh_pos[perm]
+        b_data.weights = b_data.weights[perm]
+        b_data.batch = batch
+        return b_data
 
     def _bi_pool_batch(self, b_data):
         b_lst = Batch.to_data_list(b_data)
@@ -221,10 +236,13 @@ class Res_down(nn.Module):
         # Removed edge_attr
         if torch.any(torch.isnan(b_data.x)):
             logger.error(f'something is nan in start of Res_down')
-        b_skip = self._bi_pool_batch(b_data.clone())
+        # NOTE: Implemented learnable pooling
+        # b_skip = self._bi_pool_batch(b_data.clone())
+        b_skip = self._learnable_pool(b_data.clone())
         b_skip = self.mpl_skip(b_skip) # out = channel_out
         b_data = self.mpl1(b_data)
-        b_data = self._bi_pool_batch(b_data)
+        # b_data = self._bi_pool_batch(b_data)
+        b_data = self._learnable_pool(b_data)
         b_data = self.mpl2(b_data)
         b_data.x = self.bn_nodes(b_data.x + b_skip.x)
         # b_data.edge_attr = self.bn_edges(b_data.edge_attr + b_skip.edge_attr)
