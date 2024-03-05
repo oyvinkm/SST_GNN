@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import torch
+from loguru import logger  # noqa: F401
 from torch import Tensor
 from torch_geometric.data import Data, HeteroData
 from torch_geometric.data.datapipes import functional_transform
@@ -87,18 +88,20 @@ class FlipGraph(BaseTransform):
     """
 
     def __call__(self, data: Data) -> Data:
-        x = data.x.clone()
-        mesh_pos = data.mesh_pos.clone()
-        edge_attr = data.edge_attr.clone()
+        batch = data.clone()
+        x = batch.x
+        mesh_pos = batch.mesh_pos
+        edge_attr = batch.edge_attr
+
         x[..., 0] = -x[..., 0]
         edge_attr[..., 0] *= -1
         mesh_pos[..., 0] = -mesh_pos[..., 0]
 
-        data.edge_attr = edge_attr
-        data.mesh_pos = mesh_pos
-        data.x = x
+        batch.edge_attr = edge_attr
+        batch.mesh_pos = mesh_pos
+        batch.x = x
 
-        return data
+        return batch
 
 
 @functional_transform("my_edge_mask")

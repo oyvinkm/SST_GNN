@@ -7,14 +7,15 @@ target="19-02-24/test2"         # used when we want to load a model
 # Some warningsremoval for floating-point round-off errors
 prefix="../logs"
 TF_ENABLE_ONEDNN_OPTS=0 python VGAErun.py \
-    -ae_layers 3 \
-    -batch_size 4 \
-    -epochs 51 \
+    -ae_layers 6 \
+    -data_augmentation True \
+    -batch_size 2 \
+    -epochs 35 \
     -instance_id 1 \
     -loss_step 10 \
     -log_step 5 \
     -lr 1e-4 \
-    -latent_dim 128 \
+    -latent_dim 512 \
     -logger_lvl info \
     -loss LMSE \
     -load_model False \
@@ -28,17 +29,17 @@ TF_ENABLE_ONEDNN_OPTS=0 python VGAErun.py \
     -save_args_dir $prefix/args/$day \
     -save_encodings False \
     -save_gif_dir $prefix/gifs/$day \
+    -save_losses true \
+    -save_mesh true \
     -save_mesh_dir $prefix/meshes/$day \
+    -save_model true \
     -save_model_dir $prefix/model_chkpoints/$day \
     -save_plot_dir $prefix/plots/$day \
     -save_plot true \
-    -save_model true \
     -save_visual true \
-    -save_losses true \
-    -save_mesh true \
     -test_ratio 0.1 \
     -time_stamp $now \
     -train True \
-    -transform false \
+    -pretext_task False \
     -transform_p 0.3 \
     -val_ratio 0.1 \

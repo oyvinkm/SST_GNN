@@ -40,6 +40,7 @@ def train(model, train_loader, validation_loader, args):
         epochs = manager.counter(
             total=args.epochs, desc="Epochs", unit="Epochs", color="red"
         )
+    weight = 0.7
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
@@ -63,11 +64,15 @@ def train(model, train_loader, validation_loader, args):
             batch.x = F.normalize(batch.x)
             batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
-            # b_data = augment_batch(b_data)
+            mask = np.where(b_data.x.cpu() < 0)
+            if args.data_augmentation:
+                b_data = augment_batch(b_data)
             optimizer.zero_grad()  # zero gradients each time
             pred, kl = model(b_data)
             rec_loss = criterion(pred.x[:, :2], batch.x[:, :2])
-            loss = beta * kl + rec_loss
+            loss = (beta * kl + rec_loss) * (1 - weight) + weight * criterion(
+                pred.x[:, :2][mask], batch.x[:, :2][mask]
+            )
             loss.backward()  # backpropagate loss
             optimizer.step()
             total_loss += loss.item()
@@ -111,12 +116,11 @@ def validate(model, validation_loader, criterion, epoch, args):
     saved in the validation_loader.
     """
     random_idx = randint(
-        0, len(100)
+        0, 100
     )  # doing the first 50 as these varies a lot from the mean graph
     total_loss = 0
     model.eval()
     for idx, batch in enumerate(validation_loader):
-        logger.debug(f"{idx=}")
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
         # data needs to be preserved in order to correctly calculate the loss
@@ -188,12 +192,14 @@ def augment_batch(b_data):
     augment = randint(0, 1)
     if augment:
         augments = T.Compose([FlipGraph()])
-        b_data = augments(b_data.clone())
-    return b_data
+        augmented_b_data = augments(b_data.clone())
+        return augmented_b_data
+    else:
+        return b_data
 
 
 def transform_batch(b_data, args):
-    if args.transform:
+    if args.pretext_task:
         transforms = T.Compose([AttributeMask(args.transform_p, args.device)])
         trsfmd = transforms(b_data.clone())
         return trsfmd
@@ -234,4 +240,5 @@ class LMSELoss(nn.Module):
         self.mse = nn.MSELoss()
 
     def forward(self, pred, actual):
-        return torch.log(self.mse(pred, actual) + 1)  # +1 to keep the loss from under 0
+        # +1 to keep the loss from under 0 as you cannot do log of a negative number
+        return torch.log(self.mse(pred, actual))

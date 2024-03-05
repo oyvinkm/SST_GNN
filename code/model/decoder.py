@@ -4,7 +4,7 @@ import torch
 from loguru import logger  # noqa: F401
 from model.utility import MessagePassingLayer, unpool_edge
 from torch import nn
-from torch.nn import LayerNorm, LeakyReLU, Linear, Sequential
+from torch.nn import SELU, LayerNorm, Linear, Sequential
 from torch_geometric.data import Batch
 
 
@@ -28,7 +28,7 @@ class Decoder(nn.Module):
         )
 
         self.linear_up_mlp = Sequential(
-            Linear(1, 64), LeakyReLU(), Linear(64, self.latent_vec_dim)
+            Linear(1, 64), SELU(), Linear(64, self.latent_vec_dim)
         )
 
         for i in range(self.ae_layers):
@@ -53,13 +53,13 @@ class Decoder(nn.Module):
         )
         self.out_node_decoder = Sequential(
             Linear(self.hidden_dim, self.hidden_dim // 2),
-            LeakyReLU(),
+            SELU(),
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
         )
         self.out_edge_encoder = Sequential(
             Linear(self.hidden_dim, self.hidden_dim // 2),
-            LeakyReLU(),
+            SELU(),
             Linear(self.hidden_dim // 2, 3),
             LayerNorm(3),
         )
@@ -137,7 +137,7 @@ class Res_up(nn.Module):
         self.mpl2 = MessagePassingLayer(channel_out // 2, channel_out, args)
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args)
         self.unpool = Unpool()
-        self.act1 = nn.LeakyReLU()
+        self.act1 = nn.SELU()
 
     def _bi_up_pool_batch(self, b_data):
         b_lst = b_data.to_data_list()

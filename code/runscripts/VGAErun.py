@@ -41,7 +41,7 @@ def apply_transform(args):
     logger.info("transform done")
     args.load_model = True
     args.model_file = f"model_{args.time_stamp}.pt"
-    args.transform = False
+    args.pretext_task = False
     args.time_stamp += "_post_transform"
     return args
 
@@ -54,6 +54,7 @@ parser.add_argument("-batch_size", type=int, default=1)
 parser.add_argument("-data_dir", type=str, default="../data/cylinder_flow/")
 parser.add_argument("-epochs", type=int, default=101)
 parser.add_argument("-edge_conv", type=t_or_f, default=True)
+parser.add_argument("-data_augmentation", type=t_or_f, default=True)
 parser.add_argument("-hidden_dim", type=int, default=32)
 parser.add_argument("-instance_id", type=int, default=1)
 parser.add_argument("-logger_lvl", type=str, default="DEBUG")
@@ -100,7 +101,7 @@ parser.add_argument("-save_losses", type=t_or_f, default=True)
 parser.add_argument("-save_mesh", type=t_or_f, default=True)
 parser.add_argument("-save_plot_dir", type=str, default="plots/" + day)
 parser.add_argument("-train", type=t_or_f, default=True)
-parser.add_argument("-transform", type=t_or_f, default=False)
+parser.add_argument("-pretext_task", type=t_or_f, default=False)
 parser.add_argument("-transform_p", type=float, default=0.1)
 parser.add_argument(
     "-time_stamp", type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M")
@@ -111,7 +112,7 @@ args = parser.parse_args()
 
 
 def main():
-    # args.transform = 'Attribute'
+    # args.pretext_task = 'Attribute'
     # To ensure reproducibility the best we can, here we control the sources of
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
@@ -192,11 +193,11 @@ if __name__ == "__main__":
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     logger.info(f"CUDA has version: {torch.version.cuda}")
 
-    if args.logger_lvl == "DEBUG":
+    if args.logger_lvl.upper() == "DEBUG":
         print_args(args)
 
     if not args.random_search:
-        if args.transform:
+        if args.pretext_task:
             # if we want to transform the data we have to handle how we set the
             # configuration. Documentation on apply_transform is written.
             args = apply_transform(args)
@@ -206,19 +207,19 @@ if __name__ == "__main__":
 
     else:
         param_grid = {
-            "latent_dim": [128, 256, 512],
+            "latent_dim": [128, 256],
             "ae_layers": [3, 4, 5, 6, 7],
         }
         lst = list(ParameterGrid(param_grid))
 
-        my_bool = args.transform
+        my_bool = args.pretext_task
 
         while len(lst) > 0:
             args, lst = fetch_random_args(args, lst)
-            if args.transform:
+            if args.pretext_task:
                 args = apply_transform(args)
             logger.info(f"Doing the following config: {args.time_stamp}")
             main()
             logger.success("Done")
-            args.transform = my_bool
+            args.pretext_task = my_bool
     logger.success("process_done")

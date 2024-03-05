@@ -63,12 +63,12 @@ def encode_and_save_set(args, encoder, dataset):
 
 
 def load_model(args, model):
-    load_model(args)
     model_path = os.path.join(args.save_model_dir, args.model_file)
     logger.info("Loading model")
     assert os.path.isfile(model_path), "model file does not exist"
     model.load_state_dict(torch.load(model_path))
     logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
+    return model
 
 
 def save_plot(args, model, train_losses, validation_losses):

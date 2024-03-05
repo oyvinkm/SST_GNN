@@ -4,7 +4,7 @@ import torch
 from loguru import logger  # noqa: F401
 from model.utility import MessagePassingLayer, pool_edge
 from torch import nn
-from torch.nn import LayerNorm, LeakyReLU, Linear, ReLU, Sequential
+from torch.nn import SELU, LayerNorm, Linear, Sequential
 from torch_geometric.data import Batch
 
 
@@ -26,13 +26,13 @@ class Encoder(nn.Module):
 
         self.node_encoder = Sequential(
             Linear(self.in_dim_node, self.hidden_dim),
-            LeakyReLU(),
+            SELU(),
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
         self.edge_encoder = Sequential(
             Linear(self.in_dim_edge, self.hidden_dim),
-            ReLU(),
+            SELU(),
             Linear(self.hidden_dim, self.hidden_dim),
             LayerNorm(self.hidden_dim),
         )
@@ -114,9 +114,9 @@ class Res_down(nn.Module):
         self.args = args
         self.mpl1 = MessagePassingLayer(channel_in, channel_out // 2, args)
         self.mpl2 = MessagePassingLayer(channel_out // 2, channel_out, args)
-        self.act1 = nn.ReLU()
+        self.act1 = SELU()
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args)  # skip
-        self.act2 = nn.ReLU()
+        self.act2 = SELU()
 
     def _bi_pool_batch(self, b_data):
         b_lst = Batch.to_data_list(b_data)
