@@ -11,15 +11,13 @@ import enlighten
 import numpy as np
 import torch
 from loguru import logger
-from matplotlib import pyplot as plt
 from torch import nn
 from torch.nn import MSELoss
 from torch.nn import functional as F
 from torch_geometric import transforms as T
-
-from utils.transforms import AttributeMask, FlipGraph
-from utils.visualization import save_mesh 
 from utils.opt import build_optimizer
+from utils.transforms import AttributeMask, FlipGraph
+from utils.visualization import save_mesh
 
 
 def train(model, train_loader, validation_loader, args):
@@ -41,7 +39,7 @@ def train(model, train_loader, validation_loader, args):
         epochs = manager.counter(
             total=args.epochs, desc="Epochs", unit="Epochs", color="red"
         )
-    logger.success(f'Beginning training for {args.epochs} epochs...')
+    logger.success(f"Beginning training for {args.epochs} epochs...")
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
@@ -235,16 +233,3 @@ class LMSELoss(nn.Module):
 
     def forward(self, pred, actual):
         return torch.log(self.mse(pred, actual) + 1)  # +1 to keep the loss from under 0
-
-
-
-
-
-
-
-
-
-
-
-
-
