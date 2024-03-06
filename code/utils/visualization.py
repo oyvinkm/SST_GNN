@@ -13,6 +13,7 @@ from matplotlib import tri as mtri
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
 from torch_geometric.data import Batch
+from torch.nn import functional as F
 from torch_geometric.utils import to_networkx
 
 from dataprocessing.dataset import DatasetPairs, MeshDataset
@@ -70,7 +71,14 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
         # bb_max_evl = diff.x.max()
 
         bb_min = gs[0].x[:, 0:2].min() # first two columns are velocity
+<<<<<<< HEAD
         bb_max = gs[0].x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both
+=======
+        bb_max = gs[0].x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
+
+        bb_min_pred = pred[0].x[:, 0:2].min() # first two columns are velocity
+        bb_max_pred = pred[0].x[:, 0:2].max() # use max and min velocity of gs dataset at the first step for both 
+>>>>>>> dual_latent
                                           # gs and prediction plots
         bb_min_evl = evl[0].x[:, 0:2].min()  # first two columns are velocity
         bb_max_evl = evl[0].x[:, 0:2].max()  # use max and min velocity of gs dataset at the first step for both
@@ -91,7 +99,12 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
             elif (count == 1):
                 velocity = pred[step].x[:, 0:2]
                 title = 'Reconstruction:'
+<<<<<<< HEAD
             else:
+=======
+                bb_min, bb_max = bb_min_pred, bb_max_pred
+            else: 
+>>>>>>> dual_latent
                 velocity = evl[step].x[:, 0:2]
                 title = 'Error: (Reconstruction - Ground truth)'
 
@@ -141,17 +154,26 @@ def make_gif(model, dataset, args):
     PRED = []
     GT = copy.deepcopy(dataset)
     DIFF = []
-
-    for data in dataset:
+    logger.info(len(dataset))
+    for idx, data in enumerate(dataset):
+        if idx == 100:
+            break
         with torch.no_grad():
+            logger.info(f'Making for {idx}')
+            GT[idx].x = F.normalize(GT[idx].x)  
             pred_data = data.clone()
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
             PRED.append(pred)
             DIFF.append(data)
-            DIFF[-1].x = pred.x.to(args.device) - data.x.to(args.device)
+            DIFF[-1].x[:,:2] = pred.x[:,:2].to(args.device) - data.x[:,:2].to(args.device)
     logger.info("processing done...")
+<<<<<<< HEAD
     gif_name = args.time_stamp + args.model_file[:-3]
     make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
+=======
+    gif_name = args.model_file
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 5)
+>>>>>>> dual_latent
     logger.success("gif complete...")
 
 def make_gif_from_latents(z_shifted, z, args):

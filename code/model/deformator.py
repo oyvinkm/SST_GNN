@@ -28,6 +28,12 @@ class LatentDeformator(nn.Module):
                 self.layer.weight.data = 0.1 * torch.randn_like(self.layer.weight.data)
 
     def forward(self, input):
+<<<<<<< HEAD
+=======
+        if self.type == DeformatorType.ID:
+            return input
+
+>>>>>>> dual_latent
         input = input.view([-1, self.input_dim])
 
         input_norm = torch.linalg.vector_norm(input, dim=1, keepdim=True)
