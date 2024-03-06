@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import json
-import os
-=======
 
 import torch
 import random
@@ -11,22 +7,18 @@ import os
 import json
 import numpy as np
 import torch
->>>>>>> dual_latent
 import random
 import re
 import networkx as nx
 
 from loguru import logger
+import tensorflow as tf
 from torch_geometric.loader import DataLoader
 from typing import Optional, Union
-<<<<<<< HEAD
-
-=======
 from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx
 from .normalization import get_stats
 from .triangle_to_edges import triangles_to_edges, NodeType
->>>>>>> dual_latent
 import h5py
 import numpy as np
 import torch
@@ -36,12 +28,6 @@ from torch_geometric.loader import DataLoader
 from .normalization import get_stats
 from .triangle_to_edges import NodeType, triangles_to_edges
 
-<<<<<<< HEAD
-# OS:
-# 'Linux' : Linux
-# 'Darwin' : MacOS
-# 'Windows' :
-=======
 def find_max_degree_of_graph(graph):
   return max(graph.degree, key=lambda x: x[1])[1]
 
@@ -104,7 +90,6 @@ def max_degree_of_dataset(train, test, val):
   return max
 
 
->>>>>>> dual_latent
 
 
 def find_and_replace(file, traj, new_nodes):
@@ -414,9 +399,6 @@ def loadh5py(filename, no_trajectories=1, save=False, save_folder=None):
                 if ts == number_ts:
                     break
 
-<<<<<<< HEAD
-                # Get node features
-=======
             #Note that it's faster to convert to numpy then to torch than to
             #import to torch from h5 format directly
             momentum = torch.tensor(np.array(data[trajectory]['velocity'][ts]))
@@ -427,73 +409,71 @@ def loadh5py(filename, no_trajectories=1, save=False, save_folder=None):
             node_type = torch.tensor(np.array(tf.one_hot(tf.convert_to_tensor(converted_node_type), NodeType.SIZE))).squeeze(1)
             x = torch.cat((momentum,node_type),dim=-1).type(torch.float)
             if ts == 0: print(f'Num nodes trajectory {trajectory} : {x.shape[0]}')
->>>>>>> dual_latent
+            # Note that it's faster to convert to numpy then to torch than to
+            # import to torch from h5 format directly
+            momentum = torch.tensor(np.array(data[trajectory]["velocity"][ts]))
 
-                # Note that it's faster to convert to numpy then to torch than to
-                # import to torch from h5 format directly
-                momentum = torch.tensor(np.array(data[trajectory]["velocity"][ts]))
-
-                # node_type = torch.tensor(np.array(data[trajectory]['node_type'][ts]))
-                tmp = tf.convert_to_tensor(data[trajectory]["node_type"][0])
-                node_type = torch.tensor(
-                    np.array(
-                        tf.one_hot(
-                            tf.convert_to_tensor(data[trajectory]["node_type"][0]),
-                            NodeType.SIZE,
-                        )
-                    )
-                ).squeeze(1)
-                x = torch.cat((momentum, node_type), dim=-1).type(torch.float)
-
-                # Get edge indices in COO format
-                edges = triangles_to_edges(
-                    tf.convert_to_tensor(np.array(data[trajectory]["cells"][ts]))
-                )
-
-                edge_index = torch.cat(
-                    (
-                        torch.tensor(edges[0].numpy()).unsqueeze(0),
-                        torch.tensor(edges[1].numpy()).unsqueeze(0),
-                    ),
-                    dim=0,
-                ).type(torch.long)
-
-                # Get edge features
-                u_i = torch.tensor(np.array(data[trajectory]["pos"][ts]))[edge_index[0]]
-                u_j = torch.tensor(np.array(data[trajectory]["pos"][ts]))[edge_index[1]]
-                u_ij = u_i - u_j
-                u_ij_norm = torch.norm(u_ij, p=2, dim=1, keepdim=True)
-                edge_attr = torch.cat((u_ij, u_ij_norm), dim=-1).type(torch.float)
-
-                # Node outputs, for training (velocity)
-                v_t = torch.tensor(np.array(data[trajectory]["velocity"][ts]))
-                v_tp1 = torch.tensor(np.array(data[trajectory]["velocity"][ts + 1]))
-                y = ((v_tp1 - v_t) / dt).type(torch.float)
-
-                # Node outputs, for testing integrator (pressure)
-                p = torch.tensor(np.array(data[trajectory]["pressure"][ts]))
-
-                # Data needed for visualization code
-                cells = torch.tensor(np.array(data[trajectory]["cells"][ts]))
-                mesh_pos = torch.tensor(np.array(data[trajectory]["pos"][ts]))
-                w = x.new_ones(x.shape[0], 1)
-                data_list.append(
-                    Data(
-                        x=x,
-                        edge_index=edge_index,
-                        edge_attr=edge_attr,
-                        y=y,
-                        p=p,
-                        cells=cells,
-                        weights=w,
-                        mesh_pos=mesh_pos,
-                        t=ts,
+            # node_type = torch.tensor(np.array(data[trajectory]['node_type'][ts]))
+            tmp = tf.convert_to_tensor(data[trajectory]["node_type"][0])
+            node_type = torch.tensor(
+                np.array(
+                    tf.one_hot(
+                        tf.convert_to_tensor(data[trajectory]["node_type"][0]),
+                        NodeType.SIZE,
                     )
                 )
-            if save:
-                file = f"trajectory_{trajectory}"
-                save_data_list(data_list, file, save_folder)
-                data_list = []
+            ).squeeze(1)
+            x = torch.cat((momentum, node_type), dim=-1).type(torch.float)
+
+            # Get edge indices in COO format
+            edges = triangles_to_edges(
+                tf.convert_to_tensor(np.array(data[trajectory]["cells"][ts]))
+            )
+
+            edge_index = torch.cat(
+                (
+                    torch.tensor(edges[0].numpy()).unsqueeze(0),
+                    torch.tensor(edges[1].numpy()).unsqueeze(0),
+                ),
+                dim=0,
+            ).type(torch.long)
+
+            # Get edge features
+            u_i = torch.tensor(np.array(data[trajectory]["pos"][ts]))[edge_index[0]]
+            u_j = torch.tensor(np.array(data[trajectory]["pos"][ts]))[edge_index[1]]
+            u_ij = u_i - u_j
+            u_ij_norm = torch.norm(u_ij, p=2, dim=1, keepdim=True)
+            edge_attr = torch.cat((u_ij, u_ij_norm), dim=-1).type(torch.float)
+
+            # Node outputs, for training (velocity)
+            v_t = torch.tensor(np.array(data[trajectory]["velocity"][ts]))
+            v_tp1 = torch.tensor(np.array(data[trajectory]["velocity"][ts + 1]))
+            y = ((v_tp1 - v_t) / dt).type(torch.float)
+
+            # Node outputs, for testing integrator (pressure)
+            p = torch.tensor(np.array(data[trajectory]["pressure"][ts]))
+
+            # Data needed for visualization code
+            cells = torch.tensor(np.array(data[trajectory]["cells"][ts]))
+            mesh_pos = torch.tensor(np.array(data[trajectory]["pos"][ts]))
+            w = x.new_ones(x.shape[0], 1)
+            data_list.append(
+                Data(
+                    x=x,
+                    edge_index=edge_index,
+                    edge_attr=edge_attr,
+                    y=y,
+                    p=p,
+                    cells=cells,
+                    weights=w,
+                    mesh_pos=mesh_pos,
+                    t=ts,
+                )
+            )
+        if save:
+            file = f"trajectory_{trajectory}"
+            save_data_list(data_list, file, save_folder)
+            data_list = []
     return data_list
 
 

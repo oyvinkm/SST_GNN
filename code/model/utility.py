@@ -497,8 +497,6 @@ class LatentVecLayer(nn.Module):
         logger.debug(f'after hidden_mlp {x.shape}')
         # Transpose 
         b_size = len(torch.unique(b_data.batch))
-        print(b_size)
-        print(self.max_dim)
         x = x.view(b_size, self.max_dim)
         # x = self.batch_to_dense_transpose(b_data)
         # Reduce to latent_dim

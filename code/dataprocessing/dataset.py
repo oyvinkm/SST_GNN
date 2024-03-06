@@ -49,21 +49,21 @@ class MeshDataset(Dataset):
       self.make_placeholder(g, m_ids, m_gs, t)
 
   def len(self):
-     return len(self.processed_file_names)  
+    return len(self.processed_file_names)  
   
   def get(self, idx):
     file = list(filter(lambda str : str.endswith(f'data_{idx}.pt'), self.processed_file_names))[0]
     return torch.load(os.path.join(self.data_file, file)) # (G, m_ids, m_gs, e_s) -> max m_ids
   
   def _get_pool(self):
-     return self.m_ids, self.m_gs, self.e_s, self.m_pos
+    return self.m_ids, self.m_gs, self.e_s, self.m_pos
 
   @property
   def processed_file_names(self):
-      return os.listdir(self.data_file)
+    return os.listdir(self.data_file)
 
   def len(self):
-      return len(self.processed_file_names)
+    return len(self.processed_file_names)
 
   def get(self, idx):
       file = list(
@@ -76,17 +76,17 @@ class MeshDataset(Dataset):
       )  # (G, m_ids, m_gs, e_s) -> max m_ids
 
   def _get_pool(self):
-      return self.m_ids, self.m_gs, self.e_s
+    return self.m_ids, self.m_gs, self.e_s, self.m_pos
 
   def __next__(self):
-      if self.last_idx == self.len() - 1:
-          raise StopIteration
-      else:
-          self.last_idx += 1
-          return self.get(self.last_idx)
+    if self.last_idx == self.len() - 1:
+        raise StopIteration
+    else:
+        self.last_idx += 1
+        return self.get(self.last_idx)
 
   def __iter__(self):
-      return self
+    return self
 
   def make_placeholder(self, g, m_ids, m_gs, trajectory):
     # Data(x=[1768, 54], edge_index=[2, 10132], edge_attr=[10132, 3], y=[1768, 2], p=[1768, 1], cells=[3298, 3], weights=[1768, 1], mesh_pos=[1768, 2], t=598, trajectory='147')

@@ -90,6 +90,8 @@ def save_plot(args, model, train_losses, val_losses):
 
 def load_args(args):
     """loads the args of the VGAE"""
+    if args.args_file is None:
+        return 0
     if os.path.isfile(args.args_file):
         with open(args.args_file, 'r') as f:
             args_dict = json.loads(f.read())
@@ -100,6 +102,7 @@ def load_args(args):
                 logger.info(f'{k} : {v}')
                 args.__dict__[k] = v
             logger.success(f'Args loaded from {args.args_file}')
+            return args
 
 def print_args(args):
     args_string = ""

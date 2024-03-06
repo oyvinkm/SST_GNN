@@ -10,6 +10,7 @@ python run.py \
     -epochs 40 \
     -random_search False \
     -ae_layers 3 \
+    -mpl_ratio .3 \
     -hidden_dim 64 \
     -logger_lvl INFO \
     -loss LMSE \

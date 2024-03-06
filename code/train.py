@@ -9,7 +9,7 @@ from random import randint
 import enlighten
 import numpy as np
 import torch
-    
+
 from loguru import logger
 from torch import nn
 from torch.nn import MSELoss
@@ -22,7 +22,7 @@ from utils.transforms import AttributeMask, FlipGraph
 from utils.visualization import save_mesh, plot_dual_mesh
 
 
-def train(model, train_loader, validation_loader, args):
+def train(model, train_loader, val_loader, args):
     """
     Performs a training loop on the dataset for MeshGraphNets. Also calls
     test and validation functions.
@@ -93,7 +93,7 @@ def train(model, train_loader, validation_loader, args):
         train_losses.append(total_loss)
         # Every tenth epoch, calculate acceleration test loss and velocity validation loss
         if epoch % args.log_step == 0:
-            val_loss = validate(model, validation_loader, criterion, epoch, args)
+            val_loss = validate(model, val_loader, criterion, epoch, args)
             val_losses.append(val_loss)
             if args.save_model:
                 if val_loss < best_val_loss:

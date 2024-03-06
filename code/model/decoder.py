@@ -19,7 +19,6 @@ class Decoder(nn.Module):
         self.graph_placeholder = graph_placeholder
         self.hidden_dim = args.hidden_dim
         self.latent_dim = args.latent_dim
-        self.latent_edge_dim = m_gs[-1].shape[-1]
         self.max_hidden_dim = args.hidden_dim * 2 ** args.ae_layers
         # Pre computed node mask and edge_mask from bi-stride pooling
         self.m_ids, self.m_gs, self.e_s = m_ids, m_gs, e_s

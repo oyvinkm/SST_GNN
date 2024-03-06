@@ -42,10 +42,6 @@ class MultiScaleAutoEncoder(nn.Module):
         #                                                            weights = torch.ones(len(m_ids[-1])))])
         
     def forward(self, b_data, Train=True):
-<<<<<<< HEAD
-        kl, z, b_data = self.encoder(b_data, Train)
-        b_data = self.decoder(b_data, z)
-=======
         kl, latent_vec, b_data = self.encoder(b_data, Train)
         if torch.any(torch.isnan(b_data.x)):
             logger.error(f'something is nan after encoder')
@@ -54,7 +50,6 @@ class MultiScaleAutoEncoder(nn.Module):
         if torch.any(torch.isnan(b_data.x)):
             logger.error(f'something is nan after decoder')
             exit()
->>>>>>> dual_latent
         return b_data, kl
     
 

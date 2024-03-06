@@ -134,12 +134,12 @@ def main():
     # torch.manual_seed(5)  # Torch
     # random.seed(5)  # Python
     # np.random.seed(5)  # NumPy
-
+    load_args(args)
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device : {args.device}")
     logger.debug(f'SAVE_MODEL : {args.save_model_dir}')
     # Loads args if args.arg_file != None
-    load_args(args)
+    
 
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
@@ -159,15 +159,6 @@ def main():
    
     # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
     args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
-    # this attribute is also used in encoder ^
-    if not os.path.isdir(args.graph_structure_dir):
-        os.mkdir(args.graph_structure_dir)
-        torch.save(dataset.m_ids, os.path.join(args.graph_structure_dir, "m_ids.pt"))
-        torch.save(dataset.m_gs, os.path.join(args.graph_structure_dir, "m_gs.pt"))
-        torch.save(dataset.e_s, os.path.join(args.graph_structure_dir, "e_s.pt"))
-    m_ids = (torch.load(os.path.join(args.graph_structure_dir, "m_ids.pt")),)
-    m_gs = (torch.load(os.path.join(args.graph_structure_dir, "m_gs.pt")),)
-    m_es = torch.load(os.path.join(args.graph_structure_dir, "e_s.pt"))
 
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
@@ -227,7 +218,6 @@ def main():
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            optimizer=optimizer,
             args=args,
         )
     if args.save_latent:
@@ -304,10 +294,12 @@ if __name__ == "__main__":
     else:
         param_grid = {
             "mpl_layers" : [1, 2, 3],
-            "num_blocks" : [1, 2, 3],
+            "num_blocks" : [1, 2],
             "edge_conv" : [True, False],
-            "latent_dim": [128, 256, 512],
+            "latent_dim": [128, 512],
             "ae_layers": [3, 4, 5],
+            "lr" : [1e-4, 1e-5],
+            "mpl_ratio" : [0.3, 0.6]
         }
         lst = list(ParameterGrid(param_grid))
 
