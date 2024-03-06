@@ -9,6 +9,7 @@ import copy
 import networkx as nx
 import umap.umap_ as umap
 
+from datetime import datetime
 from sklearn.manifold import TSNE
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch_geometric.data import Batch
@@ -47,7 +48,7 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
 
     '''
     logger.info('Generating velocity fields...')
-    fig, axes = plt.subplots(3, 1, figsize=(20, 16))
+    fig, axes = plt.subplots(3, 1, figsize=(20, 16))    
     num_steps = len(gs) # for a single trajectory
     num_frames = num_steps // skip
     logger.info(f"length of trajectory: {num_steps}")
@@ -132,25 +133,32 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
 
 
 def make_gif(model, dataset, args):
-    assert args.load_model, "you cannot make a gif if you're not going to load a model"
     PRED = []
-    GT = copy.deepcopy(dataset)
+    GT = []
     DIFF = []
     logger.info(len(dataset))
     for idx, data in enumerate(dataset):
-        if idx == 100:
-            break
+        pred_data = data.clone()
+        gt_data = data.clone()
+        diff_data = data.clone()
+        pred_data = pred_data.to(args.device)
+        gt_data = gt_data.to(args.device)
+        diff_data = diff_data.to(args.device)
         with torch.no_grad():
-            logger.info(f'Making for {idx}')
-            GT[idx].x = F.normalize(GT[idx].x)  
-            pred_data = data.clone()
+            gt_data.x = F.normalize(gt_data.x)
+            gt_data = gt_data.cpu()
+            GT.append(gt_data)
+            pred_data.x = F.normalize(pred_data.x)
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
+            pred = pred.cpu()
             PRED.append(pred)
-            DIFF.append(data)
-            DIFF[-1].x[:,:2] = pred.x[:,:2].to(args.device) - data.x[:,:2].to(args.device)
+            diff_data.x[:, 0:2] = (pred.x[:, 0:2] - gt_data.x[:, 0:2])
+            DIFF.append(diff_data.cpu())
     logger.info("processing done...")
-    gif_name = args.model_file
-    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 5)
+
+    time = datetime.now().strftime("%H_%M_%S")
+    gif_name = f'{args.model_file}_{time}'
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 1)
     logger.success("gif complete...")
 
 def draw_graph(g, save = False, args = None):

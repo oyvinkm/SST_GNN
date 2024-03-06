@@ -109,26 +109,6 @@ def extend_node_attributes(data_dir = 'data/cylinder_flow',
     t = re.search('\d+', f).group()
     find_and_replace(os.path.join(test_dir, f), t, new_node_attr)  
 
-
-def load_preprocessed(args):
-  """
-  Args:
-    args.file_path
-    train_size: int size of training data
-    test_size: int size of test data
-    batch_size: int batch size 
-    shuffle: bool shuffle dataset
-
-  returns train_loader, test_loader, stats_list
-  """
-  dataset = torch.load(args.file_path)[:args.train_size + args.test_size]
-  if args.shuffle:
-    random.shuffle(dataset)
-  stats_list = get_stats(dataset)
-  train_loader = DataLoader(dataset[:args.train_size], batch_size=args.batch_size, shuffle=False, num_workers = args.num_workers)
-  test_loader = DataLoader(dataset[args.train_size:], batch_size=args.batch_size, shuffle=False, num_workers = args.num_workers)
-  return train_loader, test_loader, stats_list
-
 def find_trajectory_nodes(path = 'data/cylinder_flow/', 
                           mode = 'train', 
                           save_json = True, 
@@ -181,7 +161,7 @@ def save_trajectory(save_path, trajectories):
 def constructDatasetFolders(same_nodes : Optional[Union[str, dict]], 
                             choose : Optional[Union[str, int, None]], 
                             data_dir = 'data/cylinder_flow/', 
-                            mode = 'train'):
+                            mode = 'train', **kwargs):
   """
   Constructs dataset folders for training, validation, and testing.
 
@@ -217,19 +197,19 @@ def constructDatasetFolders(same_nodes : Optional[Union[str, dict]],
   traj_dir = os.path.join(data_dir, f'trajectories_{node_key}')
   if not os.path.isdir(traj_dir):
      os.mkdir(traj_dir)
-  train = load_trajectories(mode, trajectories[:-2], save = False)
+  train = load_trajectories(mode, trajectories[:-2], save = False, **kwargs)
   save_trajectory(os.path.join(traj_dir, 'train'), train)
   print('training set saved')
-  val = load_trajectories(mode, [trajectories[-2]], save = False)
+  val = load_trajectories(mode, [trajectories[-2]], save = False, **kwargs)
   save_trajectory(os.path.join(traj_dir, 'val'), val)
   print('validation set saved')
-  test = load_trajectories(mode, [trajectories[-1]], save = False)
+  test = load_trajectories(mode, [trajectories[-1]], save = False, **kwargs)
   save_trajectory(os.path.join(traj_dir, 'test'), test)
   print('test set saved')
   
   
 
-def load_trajectories(filename, trajectories, save = False, save_folder = None):
+def load_trajectories(filename, trajectories, ts_stop = None, save = False, save_folder = None):
   """
   This function loads the trajectories from a given file, processes them and optionally saves them in a specified folder.
   
@@ -256,6 +236,8 @@ def load_trajectories(filename, trajectories, save = False, save_folder = None):
   #define the number of trajectories and time steps within each to process.
   #note that here we only include 2 of each for a toy example.
   number_ts = 600
+  if ts_stop is None:
+    ts_stop = number_ts
   with h5py.File(datafile, 'r') as data:
     
     for trajectory in trajectories:
@@ -265,7 +247,7 @@ def load_trajectories(filename, trajectories, save = False, save_folder = None):
         #for the last one, which does not have a following time step to produce
         #node output values
         for ts in range(len(data[trajectory]['velocity'])-1):
-            if(ts==number_ts):
+            if(ts==ts_stop):
                 break
 
             #Get node features

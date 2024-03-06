@@ -91,6 +91,7 @@ class Encoder(nn.Module):
         b_data = self.bottom_layer(b_data) #
         b_data = self.pad_nodes_edges(b_data)
         if Train:
+            # This is were the gradients stops
             x_t = self.node_latent_mlp(b_data).transpose(1,2)
             # Sampling latent vector for nodes and calculating KL-divergence)
             mu_nodes = self.mlp_mu_nodes(x_t)

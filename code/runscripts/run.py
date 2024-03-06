@@ -145,18 +145,6 @@ def main():
     args.max_latent_nodes, 
     args.max_latent_edges, 
     graph_placeholders) = merge_dataset_stats(train_data, test_data, val_data)
-   
-    # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist. 
-    args.graph_structure_dir = os.path.join(args.graph_structure_dir, f'{args.instance_id}')
-    # this attribute is also used in encoder ^
-    # if not os.path.isdir(args.graph_structure_dir):
-    #     os.mkdir(args.graph_structure_dir)
-    #     torch.save(dataset.m_ids, os.path.join(args.graph_structure_dir, 'm_ids.pt'))
-    #     torch.save(dataset.m_gs, os.path.join(args.graph_structure_dir, 'm_gs.pt'))
-    #     torch.save(dataset.e_s, os.path.join(args.graph_structure_dir, 'e_s.pt'))
-    # m_ids, m_gs, e_s = torch.load(os.path.join(args.graph_structure_dir,'m_ids.pt')), torch.load(os.path.join(args.graph_structure_dir,'m_gs.pt')), torch.load(os.path.join(args.graph_structure_dir,'e_s.pt'))
-
-    # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     logger.info(f'{val_data[0]}')
     
@@ -172,8 +160,8 @@ def main():
             logger.error(f'Unable to load model from {args.model_file}, because {e}')
 
     if args.make_gif:
-        gif_data = copy.deepcopy(val_data)
         logger.success('Making a gif <3')
+        gif_data = copy.deepcopy(val_data)
         args.model_file = datetime.now().strftime("%d-%m-%y")
         make_gif(model, gif_data, args)
         logger.success('Made a gif <3')
@@ -182,15 +170,17 @@ def main():
     # Initialize optimizer and scheduler(?)
     optimizer = build_optimizer(args, model.parameters())
 
-    dataset = copy.deepcopy(val_data[:250]) # The rest of the dataset have little variance
+    # dataset = copy.deepcopy(val_data[:250]) # The rest of the dataset have little variance
+    # ================================
+    # SPLIT DATASET INTO TEST AND TRAIN
+    # ================================
+    # dataset = copy.deepcopy(val_data)
+    # train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
 
-    # # Split data into train and test
-    train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
-
-    # Split training data into train and validation data
-    train_data, val_data = train_test_split(
-       train_data, test_size=args.val_ratio / (1 - args.test_ratio)
-    )
+    # # Split training data into train and validation data
+    # train_data, val_data = train_test_split(
+    #    train_data, test_size=args.val_ratio / (1 - args.test_ratio)
+    # )
     logger.info(
         f"\n\tTrain size : {len(train_data)}, \n\
         Validation size : {len(val_data)}, \n\
@@ -204,13 +194,14 @@ def main():
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     logger.success(f'All data loaded')
     # TRAINING
-    train_losses, val_losses, model = train(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        optimizer=optimizer,
-        args=args,
-    )
+    with torch.autograd.set_detect_anomaly(True):
+        train_losses, val_losses, model = train(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            args=args,
+        )
     if args.save_latent:
         pairs = 'data/cylinder_flow/pairs'
         save_traj_pairs(args.instance_id)
