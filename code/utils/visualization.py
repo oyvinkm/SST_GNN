@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import copy
 import os
 
@@ -8,6 +9,25 @@ import pandas as pd
 import seaborn as sns
 from model.decoder import Decoder 
 import torch
+=======
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+import pandas as pd
+import os 
+import torch
+import copy
+import networkx as nx
+import umap.umap_ as umap
+
+from sklearn.manifold import TSNE
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from torch_geometric.data import Batch
+from torch_geometric.utils import to_networkx
+from matplotlib import tri as mtri
+from matplotlib import animation
+>>>>>>> 9fcf9979fa633283c58e50b23de1ecf8ba3e8267
 from loguru import logger
 from matplotlib import animation
 from dataprocessing.dataset import DatasetPairs, MeshDataset
@@ -120,23 +140,33 @@ def make_animation(gs, pred, evl, path, name , skip = 1, save_anim = True, plot_
     if (save_anim):
         gs_anim = animation.FuncAnimation(fig, animate, frames=num_frames, interval=1000)
         writergif = animation.PillowWriter(fps=10) 
-        anim_path = os.path.join(path, '{}_anim.gif'.format(name))
+        anim_path = os.path.join(path, '{}.gif'.format(name))
         gs_anim.save( anim_path, writer=writergif)
         plt.show(block=True)
     else:
         pass
 
+
 def make_gif(model, dataset, args):
+<<<<<<< HEAD
     logger.info("Making gif...")
     PRED = copy.deepcopy(dataset)
+=======
+    assert args.load_model, "you cannot make a gif if you're not going to load a model"
+    PRED = []
+>>>>>>> 9fcf9979fa633283c58e50b23de1ecf8ba3e8267
     GT = copy.deepcopy(dataset)
-    DIFF = copy.deepcopy(dataset)
-    for pred_data, gt_data, diff_data in zip(PRED, GT, DIFF):
+    DIFF = []
+
+    for data in dataset:
         with torch.no_grad():
+            pred_data = data.clone()
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
-            pred_data.x = pred.x
-            diff_data.x = pred_data.x - gt_data.x.to(args.device)
+            PRED.append(pred)
+            DIFF.append(data)
+            DIFF[-1].x = pred.x.to(args.device) - data.x.to(args.device)
     logger.info("processing done...")
+<<<<<<< HEAD
     gif_name = args.time_stamp + args.model_file[:-3]
     make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
     logger.success("gif complete...")
@@ -154,6 +184,12 @@ def make_gif_from_latents(z_shifted, z, args):
     make_animation(z_shifted, z_shifted, z, folder_path, gif_name, skip = 1)
     logger.success("gif complete")
 
+=======
+    gif_name = args.model_file
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
+    logger.success("gif complete...")
+
+>>>>>>> 9fcf9979fa633283c58e50b23de1ecf8ba3e8267
 def draw_graph(g, save = False, args = None):
   """Draws the graph given"""
   G = to_networkx(g, to_undirected=True)
@@ -336,22 +372,31 @@ def plot_test_loss(test_loss, ts, test_label = 'test loss',
     
     return fig, ax
 
-def visualize_latent_space(latent_vectors, time_stamps, n_components = 2):
+def visualize_latent_space(latent_time, n_components = 2, perplexity=30., method = 'tsne'):
   # Validating input
-  assert latent_vectors.dim() <= 3 and latent_vectors.dim() >=2, f'Latent vector has dim {latent_vectors.dim()}, needs to be on form (no_samples, latent_features, (1))'
-  assert time_stamps.dim() == 1, f'time_stamps has dim {time_stamps.dim()}, need to have shape (no_samples,)'
-  if latent_vectors.dim() == 3 and latent_vectors.shape[-1] == 1:
+  # This might change depending on how the data is formatted.
+  # latent_time = torch.load('latent_space.pt', map_location='cpu')
+  unzipped = [list(t) for t in zip(*latent_time)]
+  latent_vectors = np.stack([x.squeeze().detach().numpy() for x in unzipped[0]])
+  time_stamps = np.array(unzipped[1])
+  assert len(latent_vectors.shape) <= 3 and len(latent_vectors.shape) >=2, f'Latent vector has dim {len((latent_vectors).shape)}, needs to be on form (no_samples, latent_features, (1))'
+  assert len(time_stamps.shape) == 1, f'time_stamps has dim {len(time_stamps.shape)}, need to have shape (no_samples,)'
+  if len(latent_vectors.shape) == 3 and latent_vectors.shape[-1] == 1:
     latent_vectors = latent_vectors.squeeze()
 
   # TSNE settup
-  perplexity = min(latent_vectors.shape[0] - 1, 30)
-  tsne = TSNE(n_components, perplexity=perplexity)
-  projection = tsne.fit_transform(latent_vectors.squeeze())
-  projection_df = pd.DataFrame({'tsne_1': projection[:,0], 'tsne_2': projection[:,1], 'label': time_stamps})
+  perplexity = min(latent_vectors.shape[0] - 1, perplexity)
+  if method == 'umap':
+    reducer = umap.UMAP()
+  else:    
+    reducer = TSNE(n_components, perplexity=perplexity)
+  projection = reducer.fit_transform(latent_vectors.squeeze())
+  projection_df = pd.DataFrame({'x': projection[:,0], 'y': projection[:,1], 'label': time_stamps})
 
   # Plot tsne
+  plt.figure(figsize=(12,8))
   fig, ax = plt.subplots(1)
-  sns.scatterplot(x='tsne_1', y='tsne_2', hue = 'label', data=projection_df, palette='crest', ax=ax,s=10)
+  sns.scatterplot(x='x', y='y', hue = 'label', data=projection_df, palette='crest', ax=ax,s=10)
   divider = make_axes_locatable(ax)
   cax = divider.append_axes('right', size='5%', pad=0.05)
   norm = plt.Normalize(projection_df['label'].min(), projection_df['label'].max())

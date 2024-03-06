@@ -41,6 +41,7 @@ def train(model, train_loader, validation_loader, args):
         epochs = manager.counter(
             total=args.epochs, desc="Epochs", unit="Epochs", color="red"
         )
+    logger.success(f'Beginning training for {args.epochs} epochs...')
     for epoch in range(args.epochs):
         if args.progress_bar:
             epochs.update()
