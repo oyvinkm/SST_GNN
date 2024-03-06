@@ -36,7 +36,7 @@
 * [Multi-Scale](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Multiscale%20Graph%20Neural%20Network%20Autoencoders%20for%20Interpretable%20Scientific%20Machine%20Learning.pdf)
 
 *Bi-Stride GNN*
-* [Bi-Stride](https://github.com/oyvinkm/SST_GNN/blob/main/Readings/Bi-Stride.pdf)
+* [Bi-Stride](https://arxiv.org/pdf/2210.02573.pdf)
 * [Code Bi-Stride](https://github.com/Eydcao/BSMS-GNN/tree/main)
   
 ## Technical Resources:
