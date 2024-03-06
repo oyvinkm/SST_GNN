@@ -3,6 +3,7 @@
 
 now="$(date +"%y_%m_%d-%H.%M")"
 day="$(date +"%d-%m-%y")"
+target="19-02-24/test2"         # used when we want to load a model
 # Some warningsremoval for floating-point round-off errors
 prefix="../logs"
 export TF_ENABLE_ONEDNN_OPTS=0

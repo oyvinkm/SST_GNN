@@ -1,8 +1,9 @@
-import numpy as np
-import torch
-import scipy
-import pickle
 import os
+import pickle
+
+import numpy as np
+import scipy
+import torch
 
 _INF = _INF = 1 + 1e10
 def _BFS_dist(adj_list, n_nodes, seed, mask=None):

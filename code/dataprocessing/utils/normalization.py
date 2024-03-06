@@ -1,5 +1,6 @@
-import torch
 import numpy as np
+import torch
+
 
 def normalize(to_normalize,mean_vec,std_vec):
     return (to_normalize-mean_vec)/std_vec
