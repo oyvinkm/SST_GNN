@@ -7,20 +7,20 @@ day="$(date +"%d-%m-%y")"
 prefix="../logs"
 export TF_ENABLE_ONEDNN_OPTS=0
 python run.py \
-    -epochs 40 \
+    -epochs 30 \
     -random_search False \
-    -ae_layers 3 \
-    -hidden_dim 64 \
+    -ae_layers 5 \
+    -hidden_dim 32 \
+    -latent_dim 256 \
     -logger_lvl INFO \
     -loss LMSE \
+    -lr 1e-3 \
     -alpha 0.5 \
     -save_plot True \
-    -latent_dim 512 \
+    -pool_strat TopK \
     -num_blocks 2 \
     -batch_size 2 \
-    -mpl_layers 2 \
-    -weight_decay 1e-4 \
+    -weight_decay 1e-6 \
     -edge_conv True \
-    -lr 1e-4 \
-    -loss_step 1 \
-    -log_step 1 \
+    -loss_step 2 \
+    -log_step 2 \

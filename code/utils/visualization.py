@@ -158,7 +158,7 @@ def make_gif(model, dataset, args):
 
     time = datetime.now().strftime("%H_%M_%S")
     gif_name = f'{args.model_file}_{time}'
-    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 1)
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip = 4)
     logger.success("gif complete...")
 
 def draw_graph(g, save = False, args = None):

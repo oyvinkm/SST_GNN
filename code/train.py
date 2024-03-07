@@ -60,22 +60,25 @@ def train(model, train_loader, val_loader, optimizer, args):
             optimizer.zero_grad()  # zero gradients each time
             batch = batch.to(args.device)
             batch.x = F.normalize(batch.x)
-            batch.edge_attr = F.normalize(batch.edge_attr)
+            # batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
             mask = torch.where(batch.x[:,:2] < 0)
             logger.debug(f'{b_data=}')
-            with autograd.detect_anomaly():
-                pred, kl = model(b_data)
-                rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-                mask_loss_node = criterion(pred.x[:,:2][mask], batch.x[:,:2][mask])
-                loss = beta*kl + rec_loss_node + mask_weight*mask_loss_node
-                if loss.isnan():
-                    logger.debug(f'Loss has become NaN after {epoch} epochs')
-                    torch.save(pred.to('cpu'), 'NaN_tensor.pt')
-                    exit()
+            pred, kl = model(b_data)
+            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+            mask_loss_node = criterion(pred.x[:,:2][mask], batch.x[:,:2][mask])
+            loss = beta*kl + rec_loss_node + mask_weight*mask_loss_node
+            if loss.isnan():
+                logger.error(f'Loss has become NaN after {epoch} epochs')
+                torch.save(pred.to('cpu'), 'NaN_tensor.pt')
+                exit()
+            try:
                 loss.backward()  # backpropagate loss
-                optimizer.step()
+            except RuntimeError as e:
+                logger.error(f'RuntimeError after epoch {epoch}:{idx} because {e}')
+                raise RuntimeError
+            optimizer.step()
             with open('weight_log.txt', 'w') as f:
                 f.write(f'Log after {epoch=} batch={idx}\n')
                 for name, param in model.named_parameters():

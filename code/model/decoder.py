@@ -38,10 +38,7 @@ class Decoder(nn.Module):
         self.mpl_bottom = MessagePassingLayer(hidden_dim = args.latent_dim, 
                                               latent_dim=self.max_hidden_dim, 
                                               args=args)
-        # self.linear_up_mlp_edge = Sequential(Linear(1, 500),
-        #                             LeakyReLU(),
-        #                             Linear(500, self.latent_edge_dim))
-        
+                                              
         for i in range(self.ae_layers):
             if i == self.ae_layers - 1:
                 up_nodes = self.n
@@ -64,38 +61,6 @@ class Decoder(nn.Module):
             Linear(self.hidden_dim // 2, self.out_feature_dim),
             LayerNorm(self.out_feature_dim),
         )
-        # self.out_edge_encoder = Sequential(
-        #     Linear(self.hidden_dim, self.hidden_dim // 2),
-        #     LeakyReLU(),
-        #     Linear(self.hidden_dim // 2, 3),
-        #     LayerNorm(3),
-        # )
-
-    # def from_latent_vec(self, z):
-    #     z_x, z_e = z
-    #     x = self.linear_up_mlp(z_x)
-    #     e = self.linear_up_mlp_edge(z_e)
-    #     x = self.batch_to_sparse(x)
-    #     e = self.batch_to_sparse(e)
-    #     return x, e
-        
-    
-    # def trim_nodes(self, b_data):
-    #     b_lst = Batch.to_data_list(b_data)
-    #     data_lst = []
-    #     for idx, data in enumerate(b_lst):
-    #         node_mask = self.m_ids[-1][data.trajectory]
-    #         # edge_mask = self.m_gs[-1][data.trajectory].shape[-1]
-    #         data.x = data.x[:len(node_mask)]
-    #         data.weights = data.weights[:len(node_mask)]
-    #         # data.edge_attr = data.edge_attr[:edge_mask]
-    #         data_lst.append(data)
-    #     return Batch.from_data_list(data_lst)
-    
-    # def batch_to_sparse(self, z):
-    #     z = z.transpose(1,2)
-    #     z = z.contiguous().view(-1, self.args.latent_dim)
-    #     return z
                 
     def construct_batch(self, latent_vec):
         b_lst = []
@@ -169,7 +134,8 @@ class Res_up(nn.Module):
         return b_data
     
     def forward(self, b_data):
-        b_skip = self.mpl_skip(self._bi_up_pool_batch(b_data.clone()))
+        b_skip = self._bi_up_pool_batch(b_data.clone())
+        b_skip = self.mpl_skip(b_skip)
         b_data = self.mpl1(b_data)
         b_data = self._bi_up_pool_batch(b_data)
         b_data = self.mpl2(b_data)

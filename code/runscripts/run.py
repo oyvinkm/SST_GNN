@@ -70,7 +70,7 @@ parser.add_argument('-num_blocks', type=int, default=1)
 parser.add_argument('-num_workers', type=int, default=1)
 parser.add_argument('-n_nodes', type=int, default=0)
 parser.add_argument('-opt', type=str, default='adam')
-parser.add_argument('-out_feature_dim', type=none_or_int, default=54)
+parser.add_argument('-out_feature_dim', type=none_or_int, default=2)
 parser.add_argument('-pool_strat', type=str, default='SAG')
 parser.add_argument('-progress_bar', type=t_or_f, default=False)
 parser.add_argument('-pretext_task', type=t_or_f, default=False)
@@ -266,10 +266,11 @@ if __name__ == "__main__":
     else:
         param_grid = {
             "mpl_layers" : [1, 2, 3],
-            "num_blocks" : [1, 2, 3],
-            "edge_conv" : [True, False],
-            "latent_dim": [128, 256, 512],
+            "latent_dim": [128, 512],
             "ae_layers": [3, 4, 5],
+            "lr" : [1e-4, 1e-5],
+            "mpl_ratio" : [0.3, 0.6],
+            "loss" : ["MSE", "LMSE"]
         }
         lst = list(ParameterGrid(param_grid))
 
@@ -282,8 +283,8 @@ if __name__ == "__main__":
             logger.info(f"Doing the following config: {args.time_stamp}")
             try:
                 main()
-            except ValueError:
-                print('ValueError, something is NaN')
+            except (ValueError, RuntimeError) as error:
+                print(error)
                 continue
             logger.success("Done")
             args.pretext_task = my_bool

@@ -279,7 +279,7 @@ class MessagePassingLayer(torch.nn.Module):
                 )
             else:
                 self.pools.append(
-                    self.pool(self.latent_dim, self.mpl_ratio)
+                    self.pool(in_channels = self.latent_dim, ratio = self.mpl_ratio)
                 )
 
     def forward(self, b_data):
