@@ -6,20 +6,18 @@ import copy
 import json
 import os
 from random import randint
+
 import enlighten
 import numpy as np
 import torch
-
 from loguru import logger
 from torch import nn
 from torch.nn import MSELoss
 from torch.nn import functional as F
 from torch_geometric import transforms as T
-from matplotlib import pyplot as plt
-
 from utils.opt import build_optimizer
 from utils.transforms import AttributeMask, FlipGraph
-from utils.visualization import save_mesh, plot_dual_mesh
+from utils.visualization import save_mesh
 
 
 def train(model, train_loader, val_loader, args):
@@ -29,19 +27,19 @@ def train(model, train_loader, val_loader, args):
     """
     model = model.to(args.device)
     optimizer = build_optimizer(args, model.parameters())
-    if args.loss == 'LMSE':
+    if args.loss == "LMSE":
         criterion = LMSELoss()
-        logger.info(f'Loss is LMSE')
+        logger.info("Loss is LMSE")
     else:
         criterion = MSELoss()
-        logger.info(f'Loss is MSE')
+        logger.info("Loss is MSE")
 
     train_losses = []
     val_losses = []
     best_val_loss = np.inf
     best_model = None
     beta = 1e-3
-    alpha = .5
+    alpha = 0.5
     if args.progress_bar:
         manager = enlighten.get_manager()
         epochs = manager.counter(
@@ -61,7 +59,7 @@ def train(model, train_loader, val_loader, args):
             )
         total_loss = 0
         model.train()
-        logger.debug(f'======= TRAINING =======')
+        logger.debug("======= TRAINING =======")
         for idx, batch in enumerate(train_loader):
             if args.progress_bar:
                 batch_counter.update()
@@ -74,15 +72,15 @@ def train(model, train_loader, val_loader, args):
             batch.edge_attr = F.normalize(batch.edge_attr)
             b_data = transform_batch(batch, args)
             # b_data = augment_batch(b_data)
-            mask = torch.where(batch.x[:,:2] < 0)
-            logger.debug(f'{b_data=}')
+            mask = torch.where(batch.x[:, :2] < 0)
+            logger.debug(f"{b_data=}")
             pred, kl = model(b_data)
-            rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-            mask_loss_node = criterion(pred.x[:,:2][mask], batch.x[:,:2][mask])
-            loss = beta*kl + rec_loss_node + alpha*mask_loss_node
+            rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
+            mask_loss_node = criterion(pred.x[:, :2][mask], batch.x[:, :2][mask])
+            loss = beta * kl + rec_loss_node + alpha * mask_loss_node
             if loss.isnan():
-                logger.debug(f'Loss has become NaN after {epoch} epochs')
-                torch.save(pred.to('cpu'), 'NaN_tensor.pt')
+                logger.debug(f"Loss has become NaN after {epoch} epochs")
+                torch.save(pred.to("cpu"), "NaN_tensor.pt")
                 exit()
             loss.backward()  # backpropagate loss
             optimizer.step()
@@ -129,8 +127,8 @@ def validate(model, val_loader, criterion, epoch, args):
     total_loss = 0
     model.eval()
 
-    logger.debug(f'======= VALIDATING =======')
-    rand_idx = randint(0, len(val_loader)-1)
+    logger.debug("======= VALIDATING =======")
+    rand_idx = randint(0, len(val_loader) - 1)
     for idx, batch in enumerate(val_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
@@ -141,8 +139,8 @@ def validate(model, val_loader, criterion, epoch, args):
         b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
-        #rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
+        rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
+        # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
         if idx == rand_idx and args.save_mesh:
@@ -178,9 +176,9 @@ def test(model, test_loader, args):
         logger.error(f"{b_data=}")
         pred, _ = model(b_data, Train=False)
         if idx == 0 and args.save_mesh:
-            save_mesh(pred, batch, 'test', args)
+            save_mesh(pred, batch, "test", args)
         # NOTE: CHANGE THIS FOR CALCULATING LOSS ON OTHER THINGS
-        rec_loss_node = criterion(pred.x[:,:2], batch.x[:,:2])
+        rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
         # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
@@ -248,21 +246,6 @@ def save_args(args):
         json.dump(args.__dict__, f)
 
 
-def save_mesh(pred, truth, idx, args):
-    if not os.path.isdir(args.save_mesh_dir):
-        os.mkdir(args.save_mesh_dir)
-    folder_path = os.path.join(args.save_mesh_dir, args.time_stamp)
-    if not os.path.isdir(folder_path):
-        logger.info(f'Created folder: {folder_path}')
-        os.mkdir(folder_path)
-    mesh_name = f"mesh_plot_{idx}"
-    path = os.path.join(folder_path, mesh_name + ".png")
-    # pred.x = pred.x - truth.x
-    fig = plot_dual_mesh(pred, truth)
-    fig.savefig(path, bbox_inches="tight")
-    plt.close()
-    logger.success(f'Mesh saved at {path}')
-
 # NOTE: MIGHT NOT BE A GOOD IDEA TO REMOVE +1 FROM LOSS
 class LMSELoss(nn.Module):
     def __init__(self):
@@ -270,4 +253,4 @@ class LMSELoss(nn.Module):
         self.mse = nn.MSELoss()
 
     def forward(self, pred, actual):
-        return torch.log(self.mse(pred, actual)) # +1 to keep the loss from under 0
+        return torch.log(self.mse(pred, actual))  # +1 to keep the loss from under 0

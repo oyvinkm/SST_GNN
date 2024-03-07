@@ -1,11 +1,10 @@
-import os
-import pickle
-
 import numpy as np
 import scipy
 import torch
 
 _INF = _INF = 1 + 1e10
+
+
 def _BFS_dist(adj_list, n_nodes, seed, mask=None):
     # mask: meaning only search within the subset indicated by it, any outside nodes are not reachable
     #       can be achieved by marking outside nodes as visited, dist to inf
@@ -20,7 +19,7 @@ def _BFS_dist(adj_list, n_nodes, seed, mask=None):
         res[seed] = 0
         vistied[seed] = True
         frontier = [seed]
-    
+
     depth = 0
     track = [frontier]
     while frontier:
@@ -46,13 +45,15 @@ def _BFS_dist_all(adj_list, n_nodes):
         res[i], _ = _BFS_dist(adj_list, n_nodes, i)
     return res
 
+
 def _adj_mat_to_flat_edge(adj_mat):
     if isinstance(adj_mat, np.ndarray):
         s, r = np.where(adj_mat.astype(bool))
     else:
-        print(f'tobe implemented _adj_mat_to_flat_edge, type : {type(adj_mat)}')
+        print(f"tobe implemented _adj_mat_to_flat_edge, type : {type(adj_mat)}")
         exit(1)
     return np.array([s, r])
+
 
 def pool_edge(g, idx, num_nodes):
     # g in scipy sparse mat
@@ -72,6 +73,7 @@ def pool_edge(g, idx, num_nodes):
 
     return new_g, e_idx
 
+
 def _min_ave_seed(adj_list, clusters):
     seeds = []
     dist = _BFS_dist_all(adj_list, len(adj_list))
@@ -89,7 +91,14 @@ def triangles_to_edges(cells):
     """Computes mesh edges from triangles."""
     # collect edges from triangles
     t_cell = torch.tensor(cells)
-    edge_index = torch.cat((t_cell[:, :2], t_cell[:, 1:3], torch.cat((t_cell[:, 2].unsqueeze(1), t_cell[:, 0].unsqueeze(1)), -1)), 0)
+    edge_index = torch.cat(
+        (
+            t_cell[:, :2],
+            t_cell[:, 1:3],
+            torch.cat((t_cell[:, 2].unsqueeze(1), t_cell[:, 0].unsqueeze(1)), -1),
+        ),
+        0,
+    )
     # those edges are sometimes duplicated (within the mesh) and sometimes
     # single (at the mesh boundary).
     # sort & pack edges as single torch long tensor
@@ -102,12 +111,13 @@ def triangles_to_edges(cells):
     # create two-way connectivity
     return torch.stack((torch.cat((s, r), 0), torch.cat((r, s), 0))).numpy()
 
+
 def _find_clusters(adj_list, mask=None):
     n_nodes = len(adj_list)
     if isinstance(mask, list):
         remaining_nodes = []
         for i, m in enumerate(mask):
-            if m == True:
+            if m is True:
                 remaining_nodes.append(i)
     else:
         remaining_nodes = list(range(n_nodes))
@@ -131,7 +141,8 @@ def _find_clusters(adj_list, mask=None):
 
     return cluster
 
-def bstride_selection(flat_edge, n_nodes, pos_mesh = None):
+
+def bstride_selection(flat_edge, n_nodes, pos_mesh=None):
     combined_idx_kept = set()
 
     #####_flat_edge_to_adj_list:
@@ -140,9 +151,11 @@ def bstride_selection(flat_edge, n_nodes, pos_mesh = None):
     for i in range(len(flat_edge[0])):
         adj_list[flat_edge[0, i]].append(flat_edge[1, i])
 
-
     #####_flat_edge_to_adj_mat:
-    adj_mat = scipy.sparse.coo_array((np.ones_like(flat_edge[0]), (flat_edge[0], flat_edge[1])), shape=(n_nodes, n_nodes))
+    adj_mat = scipy.sparse.coo_array(
+        (np.ones_like(flat_edge[0]), (flat_edge[0], flat_edge[1])),
+        shape=(n_nodes, n_nodes),
+    )
     #####_flat_edge_to_adj_mat:
 
     # adj mat enhance the diag
@@ -156,8 +169,7 @@ def bstride_selection(flat_edge, n_nodes, pos_mesh = None):
     # 1. seeding: by BFS_all for small graphs, or by seed_heuristic for larger graphs
     seeds = _min_ave_seed(adj_list, clusters)
     for seed, c in zip(seeds, clusters):
-        n_c = len(c)
-        odd = set() 
+        odd = set()
         even = set()
         index_kept = set()
         dist_from_cental_node, _ = _BFS_dist(adj_list, len(adj_list), seed)
@@ -191,30 +203,32 @@ def bstride_selection(flat_edge, n_nodes, pos_mesh = None):
             index_kept = index_kept.union(delta_idx)
 
         combined_idx_kept = combined_idx_kept.union(index_kept)
-    # TODO: UNDERSTAND THIS SHIT! 
+    # TODO: UNDERSTAND THIS SHIT!
     combined_idx_kept = list(combined_idx_kept)
     adj_mat = adj_mat.tocsr().astype(float)
-    adj_mat = adj_mat@adj_mat
+    adj_mat = adj_mat @ adj_mat
     adj_mat.setdiag(0)
     adj_mat, e_idx = pool_edge(adj_mat, combined_idx_kept, n_nodes)
 
     return combined_idx_kept, adj_mat, e_idx
 
 
-def generate_multi_layer_stride(flat_edge, num_l, n, pos_mesh = None):
+def generate_multi_layer_stride(flat_edge, num_l, n, pos_mesh=None):
     m_gs = [flat_edge]
     e_s = []
     m_ids = []
     g = flat_edge
-    for l in range(num_l):
-        n_l = n if l == 0 else len(index_to_keep)
+    index_to_keep = []
+    for layer in range(num_l):
+        n_l = n if layer == 0 else len(index_to_keep)
         index_to_keep, g, e_idx = bstride_selection(g, n_nodes=n_l, pos_mesh=pos_mesh)
-        #pos_mesh = pos_mesh[index_to_keep]
+        # pos_mesh = pos_mesh[index_to_keep]
         m_gs.append(torch.tensor(g))
         e_s.append(e_idx)
         m_ids.append(index_to_keep)
 
     return m_gs, m_ids, e_s
+
 
 # Used in dataset class
 """ def _cal_multi_mesh(fields, cells, args):
