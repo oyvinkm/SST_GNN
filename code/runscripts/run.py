@@ -4,6 +4,8 @@ import argparse
 import copy
 import os
 import sys
+import random
+import numpy as np
 
 import torch
 from loguru import logger
@@ -59,6 +61,7 @@ parser.add_argument("-ae_ratio", type=none_or_float, default=0.5)
 parser.add_argument("-ae_layers", type=int, default=2)
 parser.add_argument("-alpha", type=float, default=0.5)
 parser.add_argument("-batch_size", type=int, default=16)
+parser.add_argument('-batch_norm', type=t_or_f, default=True)
 parser.add_argument("-args_file", type=none_or_str, default=None)
 parser.add_argument(
     "-data_dir", type=str, default="../data/cylinder_flow/trajectories_1768"
@@ -121,6 +124,7 @@ parser.add_argument("-save_losses", type=t_or_f, default=True)
 parser.add_argument("-save_mesh", type=t_or_f, default=True)
 parser.add_argument("-save_plot_dir", type=str, default="../logs/plots/" + day)
 parser.add_argument("-train", type=t_or_f, default=True)
+parser.add_argument("-train_model", type=t_or_f, default=True)
 parser.add_argument("-transform", type=t_or_f, default=False)
 parser.add_argument("-transform_p", type=float, default=0.3)
 parser.add_argument(
@@ -138,9 +142,9 @@ def main():
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
     # https://pytorch.org/docs/stable/notes/randomness.html
-    # torch.manual_seed(5)  # Torch
-    # random.seed(5)  # Python
-    # np.random.seed(5)  # NumPy
+    torch.manual_seed(5)  # Torch
+    random.seed(5)  # Python
+    np.random.seed(5)  # NumPy
     load_args(args)
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device : {args.device}")
@@ -208,7 +212,7 @@ def main():
     logger.success("All data loaded")
 
     # TRAINING
-    if not args.load_model:
+    if args.train_model:
         with torch.autograd.set_detect_anomaly(True):
             train_losses, validation_losses, model = train(
                 model=model,

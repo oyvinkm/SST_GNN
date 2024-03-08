@@ -128,14 +128,15 @@ def validate(model, val_loader, criterion, epoch, args):
     model.eval()
 
     logger.debug("======= VALIDATING =======")
-    rand_idx = randint(0, len(val_loader) - 1)
+    early = False
+    late = False
     for idx, batch in enumerate(val_loader):
         # data = transform(batch).to(args.device)
         # Note that normalization must be done before it's called. The unnormalized
-        # data needs to be preserved in order to correctly calculate the loss
+        # data needs to be preserved in order to correctly calculate the loss?
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
-        batch.edge_attr = F.normalize(batch.edge_attr)
+        # batch.edge_attr = F.normalize(batch.edge_attr)
         b_data = transform_batch(batch, args)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
@@ -143,8 +144,17 @@ def validate(model, val_loader, criterion, epoch, args):
         # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
-        if idx == rand_idx and args.save_mesh:
-            save_mesh(pred, batch, epoch, args)
+        if batch.t < 10 and not early:
+            logger.debug(f'{batch.t=}, {pred.t=}')
+            save_mesh(pred, batch, f'{epoch}_{batch.t.item()}', args)
+            early = True 
+        if batch.t < 100 and not late:
+            logger.debug(f'{batch.t=}, {pred.t=}')
+            save_mesh(pred, batch, f'{epoch}_{batch.t.item()}', args)
+            late = True
+        if idx == len(val_loader) - 1 and not (early or late):
+            logger.debug(f'{batch.t=}, {pred.t=}')
+            save_mesh(pred, batch, f'{epoch}_{batch.t.item()}', args)
     total_loss /= idx
     return total_loss
 
@@ -170,7 +180,7 @@ def test(model, test_loader, args):
         # data needs to be preserved in order to correctly calculate the loss
         batch = batch.to(args.device)
         batch.x = F.normalize(batch.x)
-        batch.edge_attr = F.normalize(batch.edge_attr)
+        # batch.edge_attr = F.normalize(batch.edge_attr)
         # Needs to clone as operations happens in place
         b_data = batch.clone()
         logger.error(f"{b_data=}")
