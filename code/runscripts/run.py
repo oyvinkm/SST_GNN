@@ -14,8 +14,10 @@ sys.path.append("../")
 sys.path.append("dataprocessing")
 sys.path.append("model")
 sys.path.append("utils")
+import random
 from datetime import datetime
 
+import numpy as np
 from dataprocessing.dataset import MeshDataset
 from model.model import MultiScaleAutoEncoder
 from utils.helperfuncs import (
@@ -34,8 +36,8 @@ sys.path.append("../")
 sys.path.append("dataprocessing")
 sys.path.append("model")
 sys.path.append("utils")
-from train import train
-from utils.visualization import make_gif
+from train import loss_over_t, train
+from utils.visualization import make_gif, plot_test_loss
 
 
 def apply_transform(args):
@@ -44,7 +46,7 @@ def apply_transform(args):
     configuration s.t. it doesn't run model on transformed data twice"""
     logger.info("Applying Transformation")
     args.time_stamp += "_transform"
-    main()
+    main(args)
     logger.info("transform done")
     args.load_model = True
     args.model_file = f"model_{args.time_stamp}.pt"
@@ -132,16 +134,15 @@ parser.add_argument("-weight_decay", type=float, default=0.0005)
 args = parser.parse_args()
 
 
-def main():
+def main(args):
     # args.transform = 'Attribute'
     # To ensure reproducibility the best we can, here we control the sources of
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
     # https://pytorch.org/docs/stable/notes/randomness.html
-    # torch.manual_seed(5)  # Torch
-    # random.seed(5)  # Python
-    # np.random.seed(5)  # NumPy
-    load_args(args)
+    torch.manual_seed(5)  # Torch
+    random.seed(5)  # Python
+    np.random.seed(5)  # NumPy
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device : {args.device}")
     logger.debug(f"SAVE_MODEL : {args.save_model_dir}")
@@ -175,7 +176,8 @@ def main():
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
     logger.info(f"{val_data[0]}")
-
+    if args.load_model:
+        args = load_args(args)
     model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, m_pos, graph_placeholders)
     logger.success(f"Device {args.device}")
     model = model.to(args.device)
@@ -187,13 +189,17 @@ def main():
     # SPLIT DATASET INTO TEST AND TRAIN
     # ================================
     if args.one_traj:
-        dataset = copy.deepcopy(val_data)
-        train_data, test_data = train_test_split(dataset, test_size=args.test_ratio)
+        dataset = copy.deepcopy(train_data[:250])
+
+        train_data, test_data = train_test_split(
+            dataset, test_size=args.test_ratio, random_state=1
+        )
 
         # Split training data into train and validation data
         train_data, val_data = train_test_split(
-            train_data, test_size=args.val_ratio / (1 - args.test_ratio)
+            train_data, test_size=args.val_ratio / (1 - args.test_ratio), random_state=1
         )
+    val_data.sort(key=lambda g: g.t)
 
     logger.info(
         f"\n\tTrain size : {len(train_data)}, \n\
@@ -219,9 +225,14 @@ def main():
 
     if args.save_plot and not args.load_model:
         save_plot(args, train_losses, validation_losses)
+    loss_ts, ts = loss_over_t(model, val_loader, args)
+    plot_test_loss(loss_ts, ts, args, PATH=args.save_loss_over_t_dir)
 
     if args.make_gif:
-        make_gif(model, val_data, args)
+        # extend the list and sort it with regards to t
+        train_data.extend(val_data)
+        train_data.sort(key=lambda g: g.t)
+        make_gif(model, train_data, args)
 
     if args.save_encodings:
         encoder = model.encoder.to(args.device)
@@ -234,13 +245,12 @@ if __name__ == "__main__":
     # warnings.filterwarnings("ignore", ".*Sparse CSR tensor support is in beta state.*")
     logger.remove(0)
 
-    logger.add(sys.stderr, level=args.logger_lvl)
+    logger.add(sys.stderr, level=args.logger_lvl.upper())
 
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     logger.info(f"CUDA has version: {torch.version.cuda}")
 
-    if args.logger_lvl == "DEBUG":
-        print_args(args)
+    logger.debug(print_args(args))
 
     if not args.random_search:
         if args.transform:
@@ -249,19 +259,11 @@ if __name__ == "__main__":
             args = apply_transform(args)
 
         # run the model with the applied args
-        main()
+        main(args)
 
     else:
         # Define the parameters used during random search
-        param_grid = {
-            "mpl_layers": [1, 2, 3],
-            "num_blocks": [1, 2],
-            "edge_conv": [True, False],
-            "latent_dim": [128, 512],
-            "ae_layers": [3, 4, 5],
-            "lr": [1e-4, 1e-5],
-            "mpl_ratio": [0.3, 0.6],
-        }
+        param_grid = {"latent_dim": [128, 256, 512], "ae_layers": [3, 4, 5, 6]}
         lst = list(ParameterGrid(param_grid))
 
         my_bool = args.pretext_task
@@ -272,8 +274,8 @@ if __name__ == "__main__":
                 args = apply_transform(args)
             logger.info(f"Doing the following config: {args.time_stamp}")
             try:
-                main()
-            except ValueError:
+                main(args)
+            except (ValueError, RuntimeError):
                 print("ValueError, something is NaN")
                 continue
             logger.success("Done")

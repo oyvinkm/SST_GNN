@@ -1,6 +1,5 @@
 import copy
 import os
-from datetime import datetime
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -16,7 +15,6 @@ from matplotlib import tri as mtri
 from model.decoder import Decoder
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.manifold import TSNE
-from torch.nn import functional as F
 from torch_geometric.data import Batch
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import to_networkx
@@ -90,11 +88,6 @@ def make_animation(
         bb_max = (
             gs[0].x[:, 0:2].max()
         )  # use max and min velocity of gs dataset at the first step for both
-
-        bb_min_pred = pred[0].x[:, 0:2].min()  # first two columns are velocity
-        bb_max_pred = (
-            pred[0].x[:, 0:2].max()
-        )  # use max and min velocity of gs dataset at the first step for both
         # gs and prediction plots
         bb_min_evl = evl[0].x[:, 0:2].min()  # first two columns are velocity
         bb_max_evl = (
@@ -115,10 +108,11 @@ def make_animation(
                 velocity = gs[step].x[:, 0:2]
                 title = "Ground truth:"
             elif count == 1:
+                # predcition
                 velocity = pred[step].x[:, 0:2]
                 title = "Reconstruction:"
-                bb_min, bb_max = bb_min_pred, bb_max_pred
             else:
+                # Reconstruction
                 velocity = evl[step].x[:, 0:2]
                 title = "Error: (Reconstruction - Ground truth)"
 
@@ -169,7 +163,7 @@ def make_animation(
             fig, animate, frames=num_frames, interval=1000
         )
         writergif = animation.PillowWriter(fps=10)
-        anim_path = os.path.join(path, "{}.gif".format(name))
+        anim_path = os.path.join(path, "{}_anim.gif".format(name))
         gs_anim.save(anim_path, writer=writergif)
         plt.show(block=True)
     else:
@@ -178,29 +172,19 @@ def make_animation(
 
 def make_gif(model, dataset, args):
     logger.info("Making gif...")
-    args.model_file = datetime.now().strftime("%d-%m-%y")
     PRED = copy.deepcopy(dataset)
-    assert args.load_model, "you cannot make a gif if you're not going to load a model"
-    PRED = []
     GT = copy.deepcopy(dataset)
-    DIFF = []
-    logger.info(len(dataset))
-    for idx, data in enumerate(dataset):
-        if idx == 100:
-            break
+    DIFF = copy.deepcopy(dataset)
+    for pred_data, gt_data, diff_data in zip(PRED, GT, DIFF):
         with torch.no_grad():
-            logger.info(f"Making for {idx}")
-            GT[idx].x = F.normalize(GT[idx].x)
-            pred_data = data.clone()
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
-            PRED.append(pred)
-            DIFF.append(data)
-            DIFF[-1].x[:, :2] = pred.x[:, :2].to(args.device) - data.x[:, :2].to(
-                args.device
-            )
+            pred_data.x = pred.x
+            diff_data.x = pred_data.x - gt_data.x.to(args.device)
     logger.info("processing done...")
-    gif_name = args.model_file
-    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip=5)
+    gif_name = args.time_stamp
+    logger.info(f"saving gif: {gif_name}_anim.gif")
+
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip=4)
     logger.success("gif complete...")
 
 
@@ -403,7 +387,13 @@ def plot_loss(
 
 
 def plot_test_loss(
-    test_loss, ts, test_label="test loss", label="Loss", title="Loss / T", PATH=None
+    test_loss,
+    ts,
+    args,
+    test_label="test loss",
+    label="Loss",
+    title="Loss / T",
+    PATH=None,
 ):
     """
     Takes a list of training and/or validation metrics and plots them
@@ -419,6 +409,7 @@ def plot_test_loss(
     ax.grid(True)
     fig.suptitle(title)
     if PATH is not None:
+        PATH = os.path.join(PATH, args.time_stamp + ".png")
         plt.savefig(PATH)
 
     return fig, ax

@@ -26,4 +26,4 @@ def t_or_f(value):
     elif "FALSE".startswith(ua):
         return False
     else:
-        logger.CRITICAL("boolean argument incorrect")
+        logger.critical("boolean argument incorrect")

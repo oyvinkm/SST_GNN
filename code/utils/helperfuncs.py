@@ -64,7 +64,9 @@ def encode_and_save_set(args, encoder, dataset):
 
 def load_model(args, model):
     logger.info("Loading model")
-    assert os.path.isfile(args.model_file), "model file does not exist"
+    assert os.path.isfile(
+        args.model_file
+    ), f"model file {args.model_file} does not exist"
     model.load_state_dict(torch.load(args.model_file, map_location=args.device))
     logger.success(f"Multi Scale Autoencoder loaded from {args.model_file}")
     logger.success("TEST: Can we remove the return statement on next line?")
@@ -73,26 +75,36 @@ def load_model(args, model):
 
 def load_args(args):
     """loads the args of the VGAE"""
-    if args.args_file is None:
+    if not args.load_model:
         return 0
-    if os.path.isfile(args.args_file):
-        with open(args.args_file, "r") as f:
-            args_dict = json.loads(f.read())
-            ignored_keys = [
-                "load_model",
-                "make_gif",
-                "device",
-                "model_file",
-                "args_file",
-                "random_search",
-            ]
-            for k, v in args_dict.items():
-                if k in ignored_keys:
-                    continue
-                logger.info(f"{k} : {v}")
-                args.__dict__[k] = v
-            logger.success(f"Args loaded from {args.args_file}")
-            return args
+    str_splt = args.model_file.split("/")
+    args_file = os.path.join(
+        str_splt[0],
+        str_splt[1],
+        "args",
+        str_splt[3],
+        "args_" + str_splt[4][6:] + ".json",
+    )
+    assert os.path.isfile(args_file), f"{args_file=} doesn't exist"
+    logger.info("Loading args since we are loading a model...")
+    with open(args_file, "r") as f:
+        args_dict = json.loads(f.read())
+        ignored_keys = [
+            "load_model",
+            "make_gif",
+            "device",
+            "model_file",
+            "args_file",
+            "random_search",
+            "time_stamp",
+        ]
+        for k, v in args_dict.items():
+            if k in ignored_keys:
+                continue
+            logger.info(f"{k} : {v}")
+            args.__dict__[k] = v
+        logger.success(f"Args loaded from {args_file}")
+        return args
 
 
 def print_args(args):

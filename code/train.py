@@ -13,7 +13,6 @@ import torch
 from loguru import logger
 from torch import nn
 from torch.nn import MSELoss
-from torch.nn import functional as F
 from torch_geometric import transforms as T
 from utils.opt import build_optimizer
 from utils.transforms import AttributeMask, FlipGraph
@@ -39,7 +38,7 @@ def train(model, train_loader, val_loader, args):
     best_val_loss = np.inf
     best_model = None
     beta = 1e-3
-    alpha = 0.5
+    alpha = args.alpha
     if args.progress_bar:
         manager = enlighten.get_manager()
         epochs = manager.counter(
@@ -68,21 +67,21 @@ def train(model, train_loader, val_loader, args):
             # data needs to be preserved in order to correctly calculate the loss
             optimizer.zero_grad()  # zero gradients each time
             batch = batch.to(args.device)
-            batch.x = F.normalize(batch.x)
-            batch.edge_attr = F.normalize(batch.edge_attr)
-            b_data = transform_batch(batch, args)
-            # b_data = augment_batch(b_data)
-            mask = torch.where(batch.x[:, :2] < 0)
-            logger.debug(f"{b_data=}")
+            b_data = batch.clone()
             pred, kl = model(b_data)
-            rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
-            mask_loss_node = criterion(pred.x[:, :2][mask], batch.x[:, :2][mask])
+            mask = batch.x[:, 0] < 0.0
+            rec_loss_node = criterion(pred.x, batch.x)
+            mask_loss_node = criterion(pred.x[mask], batch.x[mask])
             loss = beta * kl + rec_loss_node + alpha * mask_loss_node
             if loss.isnan():
                 logger.debug(f"Loss has become NaN after {epoch} epochs")
                 torch.save(pred.to("cpu"), "NaN_tensor.pt")
-                exit()
-            loss.backward()  # backpropagate loss
+            try:
+                loss.backward()  # backpropagate loss
+            except RuntimeError as e:
+                logger.error(f"{e}")
+                return train_losses, val_losses, best_model
+
             optimizer.step()
             total_loss += loss.item()
         if args.progress_bar:
@@ -130,16 +129,11 @@ def validate(model, val_loader, criterion, epoch, args):
     logger.debug("======= VALIDATING =======")
     rand_idx = randint(0, len(val_loader) - 1)
     for idx, batch in enumerate(val_loader):
-        # data = transform(batch).to(args.device)
-        # Note that normalization must be done before it's called. The unnormalized
-        # data needs to be preserved in order to correctly calculate the loss
         batch = batch.to(args.device)
-        batch.x = F.normalize(batch.x)
-        batch.edge_attr = F.normalize(batch.edge_attr)
-        b_data = transform_batch(batch, args)
+        # batch.x = F.normalize(batch.x)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
+        rec_loss_node = criterion(pred.x, batch.x)
         # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
@@ -150,56 +144,27 @@ def validate(model, val_loader, criterion, epoch, args):
 
 
 @torch.no_grad()
-def test(model, test_loader, args):
+def loss_over_t(model, val_loader, args):
     """
     Performs a test run on our final model with the test
-    saved in the test_loader.
+    saved in the val_loader.
     """
     logger.debug("======= TESTING =======")
-    kld = nn.KLDivLoss(reduction="batchmean")
 
     loss_over_t = []
     ts = []
     criterion = MSELoss()
-    total_loss = 0
-    total_accuracy = 0
     model.eval()
-    for idx, batch in enumerate(test_loader):
-        # data = transform(batch).to(args.device)
-        # Note that normalization must be done before it's called. The unnormalized
-        # data needs to be preserved in order to correctly calculate the loss
+    for idx, batch in enumerate(val_loader):
         batch = batch.to(args.device)
-        batch.x = F.normalize(batch.x)
-        batch.edge_attr = F.normalize(batch.edge_attr)
-        # Needs to clone as operations happens in place
         b_data = batch.clone()
-        logger.error(f"{b_data=}")
         pred, _ = model(b_data, Train=False)
-        if idx == 0 and args.save_mesh:
-            save_mesh(pred, batch, "test", args)
-        # NOTE: CHANGE THIS FOR CALCULATING LOSS ON OTHER THINGS
         rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
-        # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
-        total_loss += loss.item()
-        total_accuracy += kld(input=torch.log(pred.x), target=batch.x).item()
         loss_over_t.append(loss.item())
         ts.append(batch.t.cpu())
 
-    total_loss /= idx
-    total_accuracy /= idx
-    save_accuracy(total_accuracy, args)
-    return total_loss, loss_over_t, ts
-
-
-def save_accuracy(accuracy, args):
-    if not os.path.isdir(args.save_accuracy_dir):
-        os.mkdir(args.save_accuracy_dir)
-    filename = "accuracy_" + args.time_stamp
-    path = os.path.join(args.save_accuracy_dir, filename + ".txt")
-    with open(path, "w") as f:
-        f.write("accuracy: %s" % (accuracy))
-    f.close()
+    return loss_over_t, ts
 
 
 def augment_batch(b_data):
@@ -253,4 +218,8 @@ class LMSELoss(nn.Module):
         self.mse = nn.MSELoss()
 
     def forward(self, pred, actual):
-        return torch.log(self.mse(pred, actual))  # +1 to keep the loss from under 0
+        logger.debug(f"{actual.shape=}")
+        loss_mask = torch.where(torch.argmax(actual[:, 2:7], dim=1) != 3)
+        return torch.log(
+            self.mse(pred[loss_mask][:, :2], actual[loss_mask][:, :2])
+        )  # +1 to keep the loss from under 0

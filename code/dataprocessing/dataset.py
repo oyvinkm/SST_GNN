@@ -6,6 +6,7 @@ import re
 import torch
 from dataprocessing.utils.helper_pooling import generate_multi_layer_stride
 from loguru import logger
+from torch.nn import functional as F
 from torch_geometric.data import Data, Dataset
 
 
@@ -47,6 +48,7 @@ class MeshDataset(Dataset):
             g = torch.load(os.path.join(self.data_file, f))
             m_ids, m_gs, e_s = self._cal_multi_mesh(t, g)
             self.make_placeholder(g, m_ids, m_gs, t)
+        logger.info("Loaded multi mesh for all trajectories")
 
     def len(self):
         return len(self.processed_file_names)
@@ -64,9 +66,9 @@ class MeshDataset(Dataset):
                 lambda str: str.endswith(f"data_{idx}.pt"), self.processed_file_names
             )
         )[0]
-        return torch.load(
-            os.path.join(self.data_file, file)
-        )  # (G, m_ids, m_gs, e_s) -> max m_ids
+        g = torch.load(os.path.join(self.data_file, file))
+        g.x = F.normalize(g.x)
+        return g  # (G, m_ids, m_gs, e_s) -> max m_ids
 
     def _get_pool(self):
         return self.m_ids, self.m_gs, self.e_s, self.m_pos
@@ -122,7 +124,6 @@ class MeshDataset(Dataset):
             m_mesh = {"m_gs": m_gs, "m_ids": m_ids, "e_s": e_s}
             pickle.dump(m_mesh, open(mmfile, "wb"))
         else:
-            logger.info(f"Loaded multi mesh for trajectory {traj}")
             m_mesh = pickle.load(open(mmfile, "rb"))
             m_gs, m_ids, e_s = m_mesh["m_gs"], m_mesh["m_ids"], m_mesh["e_s"]
         if len(m_ids[-1]) > self.max_latent_nodes:
