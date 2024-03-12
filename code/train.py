@@ -127,7 +127,8 @@ def validate(model, val_loader, criterion, epoch, args):
     model.eval()
 
     logger.debug("======= VALIDATING =======")
-    rand_idx = randint(0, len(val_loader) - 1)
+    early = False
+    late = False
     for idx, batch in enumerate(val_loader):
         batch = batch.to(args.device)
         # batch.x = F.normalize(batch.x)
@@ -137,8 +138,17 @@ def validate(model, val_loader, criterion, epoch, args):
         # rec_loss_edge = criterion(pred.edge_attr, batch.edge_attr)
         loss = rec_loss_node
         total_loss += loss.item()
-        if idx == rand_idx and args.save_mesh:
-            save_mesh(pred, batch, epoch, args)
+        if batch.t < 10 and not early:
+            logger.debug(f"{batch.t=}, {pred.t=}")
+            save_mesh(pred, batch, f"{epoch}_{batch.t.item()}", args)
+            early = True
+        if batch.t < 100 and not late:
+            logger.debug(f"{batch.t=}, {pred.t=}")
+            save_mesh(pred, batch, f"{epoch}_{batch.t.item()}", args)
+            late = True
+        if idx == len(val_loader) - 1 and not (early or late):
+            logger.debug(f"{batch.t=}, {pred.t=}")
+            save_mesh(pred, batch, f"{epoch}_{batch.t.item()}", args)
     total_loss /= idx
     return total_loss
 

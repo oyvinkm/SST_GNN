@@ -3,8 +3,10 @@
 import argparse
 import copy
 import os
+import random
 import sys
 
+import numpy as np
 import torch
 from loguru import logger
 from sklearn.model_selection import ParameterGrid, train_test_split
@@ -14,10 +16,8 @@ sys.path.append("../")
 sys.path.append("dataprocessing")
 sys.path.append("model")
 sys.path.append("utils")
-import random
 from datetime import datetime
 
-import numpy as np
 from dataprocessing.dataset import MeshDataset
 from model.model import MultiScaleAutoEncoder
 from utils.helperfuncs import (
@@ -61,6 +61,7 @@ parser.add_argument("-ae_ratio", type=none_or_float, default=0.5)
 parser.add_argument("-ae_layers", type=int, default=2)
 parser.add_argument("-alpha", type=float, default=0.5)
 parser.add_argument("-batch_size", type=int, default=16)
+parser.add_argument("-batch_norm", type=t_or_f, default=True)
 parser.add_argument("-args_file", type=none_or_str, default=None)
 parser.add_argument(
     "-data_dir", type=str, default="../data/cylinder_flow/trajectories_1768"
@@ -123,6 +124,7 @@ parser.add_argument("-save_losses", type=t_or_f, default=True)
 parser.add_argument("-save_mesh", type=t_or_f, default=True)
 parser.add_argument("-save_plot_dir", type=str, default="../logs/plots/" + day)
 parser.add_argument("-train", type=t_or_f, default=True)
+parser.add_argument("-train_model", type=t_or_f, default=True)
 parser.add_argument("-transform", type=t_or_f, default=False)
 parser.add_argument("-transform_p", type=float, default=0.3)
 parser.add_argument(
@@ -214,7 +216,7 @@ def main(args):
     logger.success("All data loaded")
 
     # TRAINING
-    if not args.load_model:
+    if args.train_model:
         with torch.autograd.set_detect_anomaly(True):
             train_losses, validation_losses, model = train(
                 model=model,
