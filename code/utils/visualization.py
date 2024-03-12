@@ -390,7 +390,7 @@ def plot_test_loss(
     test_loss,
     ts,
     args,
-    test_label="test loss",
+    test_label="validation loss",
     label="Loss",
     title="Loss / T",
     PATH=None,
