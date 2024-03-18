@@ -9,8 +9,27 @@ from dataprocessing.utils.loading import save_traj_pairs
 from loguru import logger
 from torch import optim
 from torch_geometric.loader import DataLoader
-from utils.visualization import plot_loss
+from utils.visualization import plot_loss, save_mesh
 
+@torch.no_grad()
+def save_pictures(model, data, args):
+    """
+    Performs a validation run on our current model with the validationset
+    saved in the val_loader.
+    """
+    total_loss = 0
+    model.eval()
+
+    logger.debug("======= SAVING PIX =======")
+    early = False
+    late = False
+    for idx, batch in enumerate(data):
+        if idx % 10 == 0:
+            batch = batch.to(args.device)
+            # batch.x = F.normalize(batch.x)
+            b_data = batch.clone()
+            pred, _ = model(b_data, Train=False)
+            save_mesh(pred, batch, f"test_{batch.t.item()}", args)
 
 @torch.no_grad()
 def save_pair_encodings(args, encoder):
@@ -44,7 +63,7 @@ def encode_and_save_set(args, encoder, dataset):
     pair_list = []
     dataset_name = f"{dataset=}".split("=")[0].split("_")[0]
     pair_list_file = os.path.join(
-        f"{latent_space_path}", f"encoded_{dataset_name}set.pt"
+        f"{latent_space_path}", f"encoded_{dataset_name}_{args.time_stamp}.pt"
     )
     if os.path.exists(pair_list_file):
         os.remove(pair_list_file)
@@ -54,11 +73,13 @@ def encode_and_save_set(args, encoder, dataset):
 
         if os.path.isfile(pair_list_file):
             pair_list = torch.load(pair_list_file)
-        pair_list.append(torch.squeeze(z, dim=0))
+        z.t = graph.t
+        pair_list.append(z)
         torch.save(pair_list, pair_list_file)
 
         # deleting to save memory
         del pair_list
+    logger.success(f'Encodings saved at {pair_list_file}')
     logger.success("Encoding done...")
 
 
@@ -97,6 +118,8 @@ def load_args(args):
             "args_file",
             "random_search",
             "time_stamp",
+            "save_encodings",
+            "make_pics"
         ]
         for k, v in args_dict.items():
             if k in ignored_keys:

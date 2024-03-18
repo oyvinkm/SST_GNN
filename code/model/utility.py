@@ -6,7 +6,7 @@ import torch
 from loguru import logger
 from torch import nn
 from torch.nn import LayerNorm, LeakyReLU, Linear, ReLU, Sequential
-from torch_geometric.nn.conv import GraphConv, MessagePassing, SAGEConv
+from torch_geometric.nn.conv import GraphConv, MessagePassing, SAGEConv, TransformerConv
 from torch_geometric.nn.pool import ASAPooling, SAGPooling, TopKPooling
 from torch_geometric.utils import coalesce, degree, to_dense_adj
 from torch_scatter import scatter
