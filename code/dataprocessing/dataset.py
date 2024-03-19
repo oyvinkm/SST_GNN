@@ -169,15 +169,15 @@ class DatasetPairs(Dataset):
         self.n = None
 
         self.traj_data = torch.load(self.data_file)
-        self._cal_multi_mesh()
+        # self._cal_multi_mesh()
         super().__init__(self.data_dir)
 
     def len(self):
         return len(self.traj_data)
 
     def get(self, idx):
-        input, label = self.traj_data[idx]
-        return (input, label)
+        z1, z2, z3 = self.traj_data[idx]
+        return (z1, z2, z3)
 
     def __next__(self):
         if self.last_idx == self.len() - 1:
@@ -209,3 +209,48 @@ class DatasetPairs(Dataset):
         self.m_ids = m_ids
         self.m_gs = m_gs
         self.e_s = e_s
+
+
+class LatentVectorPairDataset(Dataset):
+    def __init__(self, args):
+        self.latent_data = self.get_dataset_pairs(args)
+        self.last_idx = 0
+        super().__init__(self.latent_data)
+
+    def len(self):
+        return len(self.latent_data)
+
+    def __setitem__(self, k, v):
+        self.latent_data[k] = v
+
+    def __getitem__(self, idx):
+        return self.latent_data[idx]
+
+    def get(self, idx):
+        input = self.latent_data[idx]
+        return input
+
+    def __next__(self):
+        if self.last_idx == self.len() - 1:
+            raise StopIteration
+        else:
+            self.last_idx += 1
+            return self.get(self.last_idx)
+
+    def __iter__(self):
+        return self
+
+    def get_dataset_pairs(self, args):
+        str_splt = args.decoder_path.split("/")
+        PATH = os.path.join(
+            str_splt[0],
+            "data",
+            "latent_space",
+            str_splt[3],
+            str_splt[4],
+            "encoded_dataset_pairs.pt",
+        )
+
+        assert os.path.isfile(PATH), f"encoded_dataset_pairs at {PATH=} doesn't exist"
+        encoded_dataset_pairs = torch.load(PATH, map_location=torch.device(args.device))
+        return encoded_dataset_pairs

@@ -1,6 +1,3 @@
-import os
-
-import numpy as np
 import torch
 from loguru import logger
 from model.utility import (
@@ -13,7 +10,7 @@ from torch import nn
 from torch.nn import SELU, LayerNorm, Linear, Sequential
 from torch_geometric.data import Batch
 from torch_geometric.nn.norm import BatchNorm
-from torch_geometric.nn.pool import SAGPooling
+from torch_geometric.nn.pool import TopKPooling
 
 
 class Encoder(nn.Module):
@@ -87,7 +84,7 @@ class Encoder(nn.Module):
             b_data = self.layers[i](b_data)
 
         # Bottom layer message passing
-        b_data = self.bottom_layer(b_data)  
+        b_data = self.bottom_layer(b_data)
         if Train:
             # (B, |V_L|, H) -> (B, 1, Latent dim)
             x_t = self.node_latent_mlp(b_data).transpose(1, 2)
@@ -121,16 +118,17 @@ class Encoder(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
+
 class Res_down(nn.Module):
     """
-    The Res_down class is a part of a larger model and is 
-    responsible for downsampling the input data. It uses message passing layers 
-    (MessagePassingLayer) to propagate information through the graph structure. 
-    The channel_in parameter specifies the number of input channels, 
+    The Res_down class is a part of a larger model and is
+    responsible for downsampling the input data. It uses message passing layers
+    (MessagePassingLayer) to propagate information through the graph structure.
+    The channel_in parameter specifies the number of input channels,
     while the channel_out parameter specifies the number of output channels.
     The model incorporates residual connections between the downsampled layers.
-    The class combines message passing, residual connections, activation functions, 
-    batch normalization, and graph pooling to downsample the input data 
+    The class combines message passing, residual connections, activation functions,
+    batch normalization, and graph pooling to downsample the input data
     while preserving important information and gradients.
     Args:
         channel_in (int): Number of input channels.
@@ -152,8 +150,8 @@ class Res_down(nn.Module):
         self.mpl_skip = MessagePassingLayer(channel_in, channel_out, args)  # skip
         self.act2 = SELU()
         self.bn_nodes = BatchNorm(in_channels=channel_out)
-        self.pool_skip = SAGPooling(in_channels=channel_in, ratio=ratio)
-        self.pool = SAGPooling(in_channels=channel_out // 2, ratio=ratio)
+        self.pool_skip = TopKPooling(in_channels=channel_in, ratio=ratio)
+        self.pool = TopKPooling(in_channels=channel_out // 2, ratio=ratio)
 
     def _learnable_pool(self, b_data, skip=False):
         b_lst = Batch.to_data_list(b_data)

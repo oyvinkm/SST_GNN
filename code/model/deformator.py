@@ -10,58 +10,86 @@ class LatentDeformator(nn.Module):
 
     def __init__(
         self,
-        shift_dim,
         input_dim=None,
         out_dim=None,
     ):
         super(LatentDeformator, self).__init__()
-        self.shift_dim = shift_dim
         self.input_dim = input_dim
         self.out_dim = out_dim
 
-        self.lin1 = nn.Linear(self.input_dim, self.input_dim * 2, bias=True)
-        self.lin2 = nn.Linear(self.input_dim * 2, self.out_dim, bias=True)
-        self.lrel1 = nn.LeakyReLU()
+        self.deform1 = nn.Sequential(
+            nn.Linear(self.input_dim, self.input_dim * 2, bias=True),
+            nn.SELU(),
+            nn.Linear(self.input_dim * 2, self.input_dim, bias=True),
+            nn.SELU(),
+            nn.Linear(self.input_dim, self.out_dim, bias=True),
+        )
 
-        for layer in [self.lin1, self.lin2]:
-            self.layer.weight.data = torch.zeros_like(self.layer.weight.data)
-            self.layer.weight.data[:shift_dim, :shift_dim] = torch.eye(shift_dim)
-            self.layer.weight.data = 0.1 * torch.randn_like(self.layer.weight.data)
+        self.deform2 = nn.Sequential(
+            nn.Linear(self.input_dim, self.input_dim * 2, bias=True),
+            nn.SELU(),
+            nn.Linear(self.input_dim * 2, self.input_dim, bias=True),
+            nn.SELU(),
+            nn.Linear(self.input_dim, self.out_dim, bias=True),
+        )
 
-    def forward(self, input):
-        input = input.view([-1, self.input_dim])
+        self.collect = nn.Sequential(
+            nn.Linear(self.input_dim * 2, self.input_dim * 4, bias=True),
+            nn.BatchNorm1d(self.input_dim * 4),
+            nn.SELU(),
+            nn.Linear(self.input_dim * 4, self.input_dim * 2, bias=True),
+            nn.SELU(),
+            nn.Linear(self.input_dim * 2, self.out_dim, bias=True),
+        )
 
-        input_norm = torch.linalg.vector_norm(input, dim=1, keepdim=True)
-        out = self.lin1(input)
-        out = self.lrel1(out)
-        out = self.lin2(out)
-        out = (input_norm / torch.norm(out, dim=1, keepdim=True)) * out
+        self.simple = nn.Sequential(
+            nn.Linear(self.input_dim * 2, self.input_dim, bias=True),
+            # nn.BatchNorm1d(self.input_dim),
+            nn.Dropout(p=0.2),
+            nn.SELU(),
+            nn.Linear(self.input_dim, self.out_dim, bias=True),
+        )
 
-        logger.debug(f"{torch.norm(out)=}")
-        assert (
-            torch.linalg.vector_norm(out) == 1.0
-        ), "The output of the deformator is not a directions vector"
+        self.simple1 = nn.Linear(self.input_dim * 2, self.input_dim, bias=True)
+        # self.simple2 =nn.BatchNorm1d(self.input_dim)
+        self.simple2 = nn.Dropout(p=0.9)
+        self.simple3 = nn.SELU()
+        self.simple4 = nn.Linear(self.input_dim, self.out_dim, bias=True)
+        # As used in Latent-Space-Exploration-CT
+        # for layer in [self.lin1, self.lin2]:
+        #     layer.weight.data = torch.zeros_like(layer.weight.data)
+        #     layer.weight.data[:shift_dim, :shift_dim] = torch.eye(shift_dim)
+        #     layer.weight.data = 0.1 * torch.randn_like(layer.weight.data)
 
-        # try:
-        #     out = out.view([-1] + self.shift_dim)
-        # except Exception:
-        #     pass
-
-        return out.reshape(-1, self.out_dim, 1, 1)
+    def forward(self, z1, z3):
+        in1 = z1.clone()
+        in2 = z3.clone()
+        # z1 = self.deform1(in1)
+        # z3 = self.deform2(in2)
+        z = torch.cat([in1, in2], dim=2)
+        # out = self.collect(z)
+        logger.debug(f"{z.shape}")
+        out = self.simple1(z)
+        logger.debug(f"{out.shape}")
+        out = self.simple2(out)
+        out = self.simple3(out)
+        out = self.simple4(out)
+        out = out.reshape(-1, 1, self.out_dim)
+        return out
 
 
 class LatentScaler(nn.Module):
     def __init__(self, input_dim):
+        super(LatentScaler, self).__init__()
         self.input_dim = input_dim
 
-        self.lin1 = nn.Linear(self.input_dim, self.input_dim / 2, bias=True)
-        self.relu1 = nn.relu()
-        self.lin2 = nn.Linear(self.input_dim / 2, 1, bias=True)
-        self.relu2 = nn.relu()
+        self.shift = nn.Sequential(
+            nn.Linear(self.input_dim, self.input_dim // 2, bias=True),
+            nn.BatchNorm1d(self.input_dim // 2),
+            nn.SELU(),
+            nn.Linear(self.input_dim // 2, 1, bias=True),
+        )
 
     def forward(self, input):
-        out = self.lin1(input)
-        out = self.relu1(out)
-        out = self.lin2(out)
-        out = self.relu2(out)
-        return out
+        out = self.shift(input.squeeze(dim=1))
+        return out.reshape(out.shape[0], 1, 1)

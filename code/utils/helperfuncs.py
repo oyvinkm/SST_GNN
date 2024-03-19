@@ -9,7 +9,46 @@ from dataprocessing.utils.loading import save_traj_pairs
 from loguru import logger
 from torch import optim
 from torch_geometric.loader import DataLoader
-from utils.visualization import plot_loss
+
+
+def create_folder(path):
+    if not os.path.isdir(path):
+        os.mkdir(path)
+        logger.info(f"created folder at {path}")
+
+
+def save_graph_structure(args, m_ids, m_gs, e_s, m_pos, graph_placeholders):
+    create_folder(args.graph_structure_dir)
+    PATH = os.path.join(args.graph_structure_dir, f"{args.instance_id}")
+    create_folder(PATH)
+    PATH = os.path.join(PATH, f"{args.ae_layers}")
+    create_folder(PATH)
+    # These five save operations took 0.15 seconds, thus it's okay we override them everytime
+    torch.save(m_ids, os.path.join(PATH, "m_ids.pt"))
+    torch.save(m_gs, os.path.join(PATH, "m_gs.pt"))
+    torch.save(e_s, os.path.join(PATH, "e_s.pt"))
+    torch.save(m_pos, os.path.join(PATH, "m_pos.pt"))
+    torch.save(graph_placeholders, os.path.join(PATH, "graph_placeholders.pt"))
+
+
+def create_encodings_folders(args):
+    model_file_splt = args.model_file.split("/")
+
+    latent_space_path = os.path.join("..", "data", "latent_space")
+    if not os.path.isdir(latent_space_path):
+        os.mkdir(latent_space_path)
+
+    day_folder = model_file_splt[3]
+    PATH = os.path.join(latent_space_path, day_folder)
+    if not os.path.isdir(PATH):
+        os.mkdir(PATH)
+
+    model_folder = model_file_splt[4]
+    PATH = os.path.join(PATH, model_folder)
+    if not os.path.isdir(PATH):
+        os.mkdir(PATH)
+
+    return PATH
 
 
 @torch.no_grad()
@@ -18,18 +57,23 @@ def save_pair_encodings(args, encoder):
 
     save_traj_pairs(args.instance_id)
     dataset_pairs = DatasetPairs(args=args)
+    PATH = create_encodings_folders(args)
     encoder_loader = DataLoader(dataset_pairs, batch_size=1)
-    latent_space_path = os.path.join("..", "data", "latent_space")
-    pair_list = []
-    pair_list_file = os.path.join(f"{latent_space_path}", "encoded_dataset_pairs.pt")
+
+    pair_list_file = os.path.join(f"{PATH}", "encoded_dataset_pairs.pt")
     if os.path.exists(pair_list_file):
         os.remove(pair_list_file)
-    for idx, (graph1, graph2) in enumerate(encoder_loader):
+    pair_list = []
+    for idx, (graph1, graph2, graph3) in enumerate(encoder_loader):
         _, z1, _ = encoder(graph1.to(args.device))
         _, z2, _ = encoder(graph2.to(args.device))
+        _, z3, _ = encoder(graph3.to(args.device))
         if os.path.isfile(pair_list_file):
             pair_list = torch.load(pair_list_file)
-        pair_list.append((torch.squeeze(z1, dim=0), torch.squeeze(z2, dim=0)))
+        z1.z = torch.squeeze(z1.z, dim=0)
+        z2.z = torch.squeeze(z2.z, dim=0)
+        z3.z = torch.squeeze(z3.z, dim=0)
+        pair_list.append((z1, z2, z3))
         torch.save(pair_list, pair_list_file)
 
         # deleting to save memory
@@ -40,26 +84,43 @@ def save_pair_encodings(args, encoder):
 @torch.no_grad()
 def encode_and_save_set(args, encoder, dataset):
     logger.info("encoding graphs from  with current model...")
-    latent_space_path = os.path.join("..", "data", "latent_space")
-    pair_list = []
-    dataset_name = f"{dataset=}".split("=")[0].split("_")[0]
-    pair_list_file = os.path.join(
-        f"{latent_space_path}", f"encoded_{dataset_name}set.pt"
-    )
+    PATH = create_encodings_folders(args)
+    pair_list_file = os.path.join(PATH, "encoded_dataset.pt")
     if os.path.exists(pair_list_file):
         os.remove(pair_list_file)
+
+    pair_list = []
     loader = DataLoader(dataset, batch_size=1)
     for idx, graph in enumerate(loader):
         _, z, _ = encoder(graph.to(args.device))
 
         if os.path.isfile(pair_list_file):
             pair_list = torch.load(pair_list_file)
-        pair_list.append(torch.squeeze(z, dim=0))
+        z.z = torch.squeeze(z.z, dim=0)
+        pair_list.append(z)
         torch.save(pair_list, pair_list_file)
 
         # deleting to save memory
         del pair_list
     logger.success("Encoding done...")
+
+
+def get_dataset_pairs(args):
+    str_splt = args.decoder_path.split("/")
+    logger.debug(str_splt)
+    PATH = os.path.join(
+        str_splt[0],
+        "data",
+        "latent_space",
+        str_splt[3],
+        str_splt[4],
+        "encoded_dataset_pairs.pt",
+    )
+
+    assert os.path.isfile(PATH), f"encoded_dataset_pairs at {PATH=} doesn't exist"
+    encoded_dataset_pairs = torch.load(PATH, map_location=torch.device(args.device))
+    res = [(x.z, y.z, z.z) for (x, y, z) in encoded_dataset_pairs]
+    return res
 
 
 def load_model(args, model):
@@ -75,9 +136,13 @@ def load_model(args, model):
 
 def load_args(args):
     """loads the args of the VGAE"""
-    if not args.load_model:
-        return 0
-    str_splt = args.model_file.split("/")
+    # I can't be arsed, shitty solution, but i mean... It works every time
+    try:
+        model_path = args.model_file
+    except AttributeError:
+        model_path = args.decoder_path
+
+    str_splt = model_path.split("/")
     args_file = os.path.join(
         str_splt[0],
         str_splt[1],
@@ -89,21 +154,28 @@ def load_args(args):
     logger.info("Loading args since we are loading a model...")
     with open(args_file, "r") as f:
         args_dict = json.loads(f.read())
+        # This defines what the old args should control.
         ignored_keys = [
             "load_model",
             "make_gif",
             "device",
             "model_file",
             "args_file",
+            "logger_lvl",
             "random_search",
-            "time_stamp",
+            "epochs",
+            "batch_size",
+            "save_mesh_dir",  # make it compatible with directions
+            "time_stamp",  # We get a new time_stamp
+            "save_encodings",  # The old run shouldn't determine whether we save encodings now
+            # "instance_id",  # The old run shouldn't determine whether what trajectory we run, yes it should since the structure of our graph and model depends on this
         ]
         for k, v in args_dict.items():
             if k in ignored_keys:
                 continue
-            logger.info(f"{k} : {v}")
             args.__dict__[k] = v
         logger.success(f"Args loaded from {args_file}")
+
         return args
 
 
@@ -168,19 +240,3 @@ def fetch_random_args(args, lst):
     logger.success(f"Doing the following config: {args.time_stamp}")
 
     return args, lst
-
-
-def save_plot(args, train_losses, validation_losses):
-    loss_name = "loss_" + args.time_stamp
-    if not os.path.isdir(args.save_plot_dir):
-        os.mkdir(args.save_plot_dir)
-    if not os.path.isdir(args.save_loss_over_t_dir):
-        os.mkdir(args.save_loss_over_t_dir)
-    PATH = os.path.join(args.save_plot_dir, f"{loss_name}.png")
-    plot_loss(
-        train_loss=train_losses,
-        train_label="Training Loss",
-        validation_losses=validation_losses,
-        val_label="Validation Loss",
-        PATH=PATH,
-    )

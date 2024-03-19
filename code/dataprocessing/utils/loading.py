@@ -558,10 +558,12 @@ def save_data_list(data_list, file, data_folder=None):
         os.makedirs(data_folder)
     torch.save(data_list, os.path.join(data_folder, f"{file}.pt"))
 
+    """Splits list of data pairs into two lists and discards overlapping entries"""
+
 
 def split_pairs(data, ratio=0.1):
-    """Splits list of data pairs into two lists and discards overlapping entries"""
     test_data = []
+    np.random.seed(4)  # NumPy
     rng = np.random.default_rng()
     choice = rng.choice(len(data) - 1, int(ratio * len(data)), replace=False)
     for i in choice:
@@ -574,16 +576,26 @@ def split_pairs(data, ratio=0.1):
     return train_data, test_data
 
 
-def save_traj_pairs(instance_id, ratio=0.1):
-    pairs = "../data/cylinder_flow/pairs"
+def save_traj_pairs(instance_id):
+    pairs = "../data/cylinder_flow/trajectories_1768/pairs"
     if not os.path.isdir(pairs):
         os.mkdir(pairs)
     trajectory = f"../data/cylinder_flow/trajectories/trajectory_{instance_id}.pt"
     data_list = torch.load(trajectory)
     data_list = sorted(data_list, key=lambda g: g.t)
-    data_pairs = list(zip(data_list[:-2], data_list[1:-1]))
+    data_pairs = list(zip(data_list[:-2], data_list[1:-1], data_list[2:]))
     train_data, test_data = split_pairs(data_pairs)
     train_path = os.path.join(pairs, f"train_pair_{instance_id}.pt")
     test_path = os.path.join(pairs, f"test_pair_{instance_id}.pt")
     torch.save(train_data, train_path)
     torch.save(test_data, test_path)
+
+
+def save_traj_935(instance_id):
+    """pretty hardcoded for the set at ../data/cylinder_flow/trajectories_1768/val/ when it has 300 graphs
+    As I want it to fit it to the save_traj_pairs function in this module
+    """
+    path = "data/cylinder_flow/trajectories_1768/val/"
+    save_dest = f"data/cylinder_flow/trajectories/trajectory_{instance_id}.pt"
+    graph_list = [torch.load(f"{path}/935_data_{i}.pt") for i in range(300)]
+    torch.save(graph_list, save_dest)

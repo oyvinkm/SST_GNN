@@ -89,18 +89,16 @@ class Decoder(nn.Module):
     def forward(self, latent_vec):
         latent_vec.z = self.up_mlp(latent_vec.z).transpose(1, 2)
         latent_vec.z = self.latent_up_mlp(latent_vec.z)
-        logger.debug(f"{latent_vec=} before constructing batch")
         # Should be shape (B, |V|_max, latent_dim):
         b_data = self.construct_batch(latent_vec)
-        logger.debug(f"{b_data=}")
         b_data = self.mpl_bottom(b_data)
         for i in range(self.ae_layers):
             b_data = self.layers[i](b_data)
             if torch.any(torch.isnan(b_data.x)):
                 logger.error(f"something is nan in decoder path no {i}")
                 exit()
-        b_data = self.final_layer(b_data)  
-        b_data.x = self.out_node_decoder(b_data.x)  
+        b_data = self.final_layer(b_data)
+        b_data.x = self.out_node_decoder(b_data.x)
         return b_data
 
 

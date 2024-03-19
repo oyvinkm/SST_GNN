@@ -2,7 +2,6 @@
 """Main file for running setup, training and testing"""
 import argparse
 import copy
-import os
 import random
 import sys
 
@@ -27,8 +26,8 @@ from utils.helperfuncs import (
     load_model,
     merge_dataset_stats,
     print_args,
+    save_graph_structure,
     save_pair_encodings,
-    save_plot,
 )
 from utils.parserfuncs import none_or_float, none_or_int, none_or_str, t_or_f
 
@@ -37,7 +36,7 @@ sys.path.append("dataprocessing")
 sys.path.append("model")
 sys.path.append("utils")
 from train import loss_over_t, train
-from utils.visualization import make_gif, plot_test_loss
+from utils.visualization import make_gif, plot_test_loss, save_plot
 
 
 def apply_transform(args):
@@ -58,24 +57,24 @@ def apply_transform(args):
 day = datetime.now().strftime("%d-%m-%y")
 parser = argparse.ArgumentParser()
 parser.add_argument("-ae_ratio", type=none_or_float, default=0.5)
-parser.add_argument("-ae_layers", type=int, default=2)
+parser.add_argument("-ae_layers", type=int, default=3)
 parser.add_argument("-alpha", type=float, default=0.5)
-parser.add_argument("-batch_size", type=int, default=16)
+parser.add_argument("-batch_size", type=int, default=2)
 parser.add_argument("-batch_norm", type=t_or_f, default=True)
 parser.add_argument("-args_file", type=none_or_str, default=None)
 parser.add_argument(
     "-data_dir", type=str, default="../data/cylinder_flow/trajectories_1768"
 )
 parser.add_argument("-dual_loss", type=t_or_f, default=False)
-parser.add_argument("-epochs", type=int, default=1)
+parser.add_argument("-epochs", type=int, default=40)
 parser.add_argument("-edge_conv", type=t_or_f, default=True)
 parser.add_argument("-hidden_dim", type=int, default=32)
-parser.add_argument("-instance_id", type=int, default=1)
+parser.add_argument("-instance_id", type=int, default=935)
 parser.add_argument("-latent_space", type=t_or_f, default=True)
 parser.add_argument("-logger_lvl", type=str, default="INFO")
 parser.add_argument("-loss", type=none_or_str, default="LMSE")
 parser.add_argument("-masked_loss", type=t_or_f, default=True)
-parser.add_argument("-load_model", type=t_or_f, default=False)
+parser.add_argument("-load_model", type=t_or_f, default=True)
 parser.add_argument("-loss_step", type=int, default=10)
 parser.add_argument("-log_step", type=int, default=10)
 parser.add_argument("-latent_dim", type=int, default=64)
@@ -93,7 +92,7 @@ parser.add_argument("-n_nodes", type=int, default=0)
 parser.add_argument("-opt", type=str, default="adam")
 parser.add_argument("-out_feature_dim", type=none_or_int, default=54)
 parser.add_argument("-one_traj", type=t_or_f, default=True)
-parser.add_argument("-pool_strat", type=str, default="SAG")
+parser.add_argument("-pool_strat", type=str, default="TopK")
 parser.add_argument("-progress_bar", type=t_or_f, default=False)
 parser.add_argument("-pretext_task", type=t_or_f, default=False)
 parser.add_argument("-random_search", type=t_or_f, default=False)
@@ -125,10 +124,8 @@ parser.add_argument("-save_mesh", type=t_or_f, default=True)
 parser.add_argument("-save_plot_dir", type=str, default="../logs/plots/" + day)
 parser.add_argument("-train", type=t_or_f, default=True)
 parser.add_argument("-train_model", type=t_or_f, default=True)
-parser.add_argument("-transform", type=t_or_f, default=False)
-parser.add_argument("-transform_p", type=float, default=0.3)
 parser.add_argument(
-    "-time_stamp", type=none_or_str, default=datetime.now().strftime("%Y_%m_%d-%H.%M")
+    "-time_stamp", type=none_or_str, default=datetime.now().strftime("%H.%M-%d_%m_%Y")
 )
 parser.add_argument("-test_ratio", type=float, default=0.2)
 parser.add_argument("-val_ratio", type=float, default=0.1)
@@ -142,14 +139,17 @@ def main(args):
     # randomness by seeding the various random number generators used in this Colab
     # For more information, see:
     # https://pytorch.org/docs/stable/notes/randomness.html
-    torch.manual_seed(5)  # Torch
-    random.seed(5)  # Python
-    np.random.seed(5)  # NumPy
+
+    # Tested to be a decent seed
+    seed = 4
+    torch.manual_seed(seed)  # Torch
+    random.seed(seed)  # Python
+    np.random.seed(seed)  # NumPy
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device : {args.device}")
-    logger.debug(f"SAVE_MODEL : {args.save_model_dir}")
     # Loads args if args.arg_file != None
-
+    if args.load_model:
+        args = load_args(args)
     # Initialize dataset, containing one trajecotry.
     # NOTE: This will be changed to only take <args>
     train_data = MeshDataset(args=args, mode="train")
@@ -170,18 +170,12 @@ def main(args):
         graph_placeholders,
     ) = merge_dataset_stats(train_data, test_data, val_data)
 
-    # Save and load m_ids, m_gs, and e_s. Only saves if they don't exist.
-    args.graph_structure_dir = os.path.join(
-        args.graph_structure_dir, f"{args.instance_id}"
-    )
+    save_graph_structure(args, m_ids, m_gs, e_s, m_pos, graph_placeholders)
 
     # args.latent_vec_dim = math.ceil(dataset[0].num_nodes*(args.ae_ratio**args.ae_layers))
     # Initialize Model
-    logger.info(f"{val_data[0]}")
-    if args.load_model:
-        args = load_args(args)
+
     model = MultiScaleAutoEncoder(args, m_ids, m_gs, e_s, m_pos, graph_placeholders)
-    logger.success(f"Device {args.device}")
     model = model.to(args.device)
     if args.load_model:
         model = load_model(args, model)
@@ -191,15 +185,17 @@ def main(args):
     # SPLIT DATASET INTO TEST AND TRAIN
     # ================================
     if args.one_traj:
-        dataset = copy.deepcopy(train_data[:250])
+        dataset = copy.deepcopy(val_data)
 
         train_data, test_data = train_test_split(
-            dataset, test_size=args.test_ratio, random_state=1
+            dataset, test_size=args.test_ratio, random_state=seed
         )
 
         # Split training data into train and validation data
         train_data, val_data = train_test_split(
-            train_data, test_size=args.val_ratio / (1 - args.test_ratio), random_state=1
+            train_data,
+            test_size=args.val_ratio / (1 - args.test_ratio),
+            random_state=seed,
         )
     val_data.sort(key=lambda g: g.t)
 
@@ -216,7 +212,7 @@ def main(args):
     logger.success("All data loaded")
 
     # TRAINING
-    if args.train_model:
+    if not args.load_model:
         with torch.autograd.set_detect_anomaly(True):
             train_losses, validation_losses, model = train(
                 model=model,
@@ -230,17 +226,16 @@ def main(args):
     loss_ts, ts = loss_over_t(model, val_loader, args)
     plot_test_loss(loss_ts, ts, args, PATH=args.save_loss_over_t_dir)
 
+    # extend the list and sort it with regards to t
+    train_data.extend(val_data)
+    train_data.sort(key=lambda g: g.t)
     if args.make_gif:
-        # extend the list and sort it with regards to t
-        train_data.extend(val_data)
-        train_data.sort(key=lambda g: g.t)
         make_gif(model, train_data, args)
-
     if args.save_encodings:
+        logger.info("Encoding graphs")
         encoder = model.encoder.to(args.device)
         save_pair_encodings(args, encoder)
         encode_and_save_set(args, encoder, train_data)
-        encode_and_save_set(args, encoder, val_data)
 
 
 if __name__ == "__main__":
@@ -255,17 +250,12 @@ if __name__ == "__main__":
     logger.debug(print_args(args))
 
     if not args.random_search:
-        if args.transform:
-            # if we want to transform the data we have to handle how we set the
-            # configuration. Documentation on apply_transform is written.
-            args = apply_transform(args)
-
         # run the model with the applied args
         main(args)
 
     else:
         # Define the parameters used during random search
-        param_grid = {"latent_dim": [128, 256, 512], "ae_layers": [3, 4, 5, 6]}
+        param_grid = {"latent_dim": [16, 32, 64]}
         lst = list(ParameterGrid(param_grid))
 
         my_bool = args.pretext_task

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import numpy as np
 import scipy
 import torch
-from loguru import logger
 from torch import nn
 from torch.nn import LayerNorm, LeakyReLU, Linear, ReLU, Sequential
 from torch_geometric.nn.conv import GraphConv, MessagePassing, SAGEConv
@@ -524,17 +523,14 @@ class LatentVecLayer(nn.Module):
 
         b_data = b_data.clone()
         x = b_data.x
-        logger.debug(f"working on nodes : {x.shape}")
         # Reduce hidden dimensions to 1 for each node
         x = self.hidden_dim_mlp(x)
-        logger.debug(f"after hidden_mlp {x.shape}")
         # Transpose
         b_size = len(torch.unique(b_data.batch))
         x = x.view(b_size, self.max_dim)
         # x = self.batch_to_dense_transpose(b_data)
         # Reduce to latent_dim
         x = self.latent_dim_mlp(x)
-        logger.debug(f"After latent: {x.shape}")
         # Return latent vector
         # return self.act(x)
         return self.act(x).unsqueeze(dim=-1)

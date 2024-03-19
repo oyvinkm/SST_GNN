@@ -12,7 +12,7 @@ conda init bash
 conda activate cluster
 pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
 pip install torch_geometric -f https://data.pyg.org/whl/torch-2.1.2%2Bcu118.html
-pip install pyg_lib -f https://data.pyg.org/whl/torch-2.1.2%2Bcu118.html
+pip install pyg_lib -f https://data.pyg.org/whl/torch-2.1.0%2Bcu118/pyg_lib-0.3.1%2Bpt21cu118-cp39-cp39-linux_x86_64.whl
 pip install torch-cluster -f https://data.pyg.org/whl/torch-2.1.2%2Bcu118.html
 pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.2%2Bcu118.html
 pip install torch-sparse -f https://data.pyg.org/whl/torch-2.1.2%2Bcu118.html

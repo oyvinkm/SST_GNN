@@ -27,11 +27,9 @@ def save_difference_norms(train_set):
     f.savefig(PATH, bbox_inches="tight")
 
 
-def train(deformator, latent_scaler, train_loader, validation_loader, deformator_args):
+def train(deformator, train_loader, validation_loader, deformator_args):
     deformator.to(deformator_args.device)
-
-    logger.debug(f"look two lines below {deformator.type=}")
-
+    criterion = torch.nn.MSELoss()
     deformator_opt = torch.optim.Adam(deformator.parameters(), lr=1e-4)
 
     avgs = (
@@ -48,19 +46,13 @@ def train(deformator, latent_scaler, train_loader, validation_loader, deformator
         # It's approximately 2 seconds for 100 epochs
         total_loss = 0
         for idx, batch in enumerate(train_loader):
-            z1, z2 = batch
-
+            z1, z2, z3 = batch[0], batch[1], batch[2]
             deformator.zero_grad()
 
             # Deformation for 'proj'
-            direction_prediction = deformator(z1).squeeze(dim=3)
-            scalar_prediction = latent_scaler(z1)
+            z2_prediction = deformator(z1, z3)
 
-            z2_prediction = z1 + (direction_prediction * scalar_prediction).squeeze(
-                dim=2
-            )
-
-            loss = torch.mean(torch.abs(z2_prediction - z2))
+            loss = criterion(z2_prediction, z2)
             loss.backward()
 
             deformator_opt.step()
@@ -71,27 +63,29 @@ def train(deformator, latent_scaler, train_loader, validation_loader, deformator
         train_losses.append(total_loss)
         val_loss = validate(deformator, validation_loader, epoch)
         val_losses.append(val_loss)
+        if epoch % 100 == 0:
+            logger.info(f"{epoch=}")
     save_plots(deformator, train_losses, val_losses, deformator_args)
 
 
 @torch.no_grad()
-def validate(deformator, latent_scaler, validation_loader, epoch):
+def validate(deformator, validation_loader, epoch):
     total_loss = 0
+    criterion = torch.nn.CosineSimilarity()
     deformator.eval()
     for idx, batch in enumerate(validation_loader):
-        z1, z2 = batch
+        z1, z2, z3 = batch[0], batch[1], batch[2]
+        deformator.zero_grad()
+        z2_prediction = deformator(z1, z3)
 
-        # Deformation for 'proj'
-        # shift_prediction = deformator(z1).squeeze(dim = 3)
+        # # Deformation for 'proj'
+        # direction_prediction = deformator(z1, z3)
+        # scalar_prediction = latent_scaler(z1, z3)
 
-        # Deformation for 'id'
+        # z2_prediction = z1 + (direction_prediction * scalar_prediction)
 
-        direction_prediction = deformator(z1).squeeze(dim=3)
-        scalar_prediction = latent_scaler(z1)
-
-        z2_prediction = z1 + (direction_prediction * scalar_prediction).squeeze(dim=2)
-
-        shift_loss = torch.mean(torch.abs(z2_prediction - z2))
+        shift_loss = criterion(z2_prediction, z2)
+        # shift_loss = torch.mean(torch.abs(z2_prediction - z2))
 
         total_loss += shift_loss.item()
     return total_loss / len(validation_loader)
@@ -105,9 +99,7 @@ def save_plots(deformator, train_losses, validation_losses, deformator_args):
     PLOTS_PATH = os.path.join("..", "logs", "direction", "plots")
     if not os.path.isdir(PLOTS_PATH):
         os.mkdir(PLOTS_PATH)
-    PATH = os.path.join(
-        PLOTS_PATH, f"{deformator.type=}_{deformator_args.time_stamp}.pdf"
-    )
+    PATH = os.path.join(PLOTS_PATH, f"{deformator_args.time_stamp}.pdf")
 
     f = plt.figure()
     plt.title("Losses Plot")
@@ -116,6 +108,6 @@ def save_plots(deformator, train_losses, validation_losses, deformator_args):
     plt.grid(True)
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-
+    logger.info(f"Saving loss plot at figure {PATH}")
     plt.legend()
     f.savefig(PATH, bbox_inches="tight")

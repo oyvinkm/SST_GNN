@@ -58,7 +58,6 @@ def train(model, train_loader, val_loader, args):
             )
         total_loss = 0
         model.train()
-        logger.debug("======= TRAINING =======")
         for idx, batch in enumerate(train_loader):
             if args.progress_bar:
                 batch_counter.update()
@@ -126,7 +125,6 @@ def validate(model, val_loader, criterion, epoch, args):
     total_loss = 0
     model.eval()
 
-    logger.debug("======= VALIDATING =======")
     early = False
     late = False
     for idx, batch in enumerate(val_loader):
@@ -139,15 +137,12 @@ def validate(model, val_loader, criterion, epoch, args):
         loss = rec_loss_node
         total_loss += loss.item()
         if batch.t < 10 and not early:
-            logger.debug(f"{batch.t=}, {pred.t=}")
             save_mesh(pred, batch, f"{epoch}_{batch.t.item()}", args)
             early = True
         if batch.t < 100 and not late:
-            logger.debug(f"{batch.t=}, {pred.t=}")
             save_mesh(pred, batch, f"{epoch}_{batch.t.item()}", args)
             late = True
         if idx == len(val_loader) - 1 and not (early or late):
-            logger.debug(f"{batch.t=}, {pred.t=}")
             save_mesh(pred, batch, f"{epoch}_{batch.t.item()}", args)
     total_loss /= idx
     return total_loss
@@ -228,7 +223,6 @@ class LMSELoss(nn.Module):
         self.mse = nn.MSELoss()
 
     def forward(self, pred, actual):
-        logger.debug(f"{actual.shape=}")
         loss_mask = torch.where(torch.argmax(actual[:, 2:7], dim=1) != 3)
         return torch.log(
             self.mse(pred[loss_mask][:, :2], actual[loss_mask][:, :2])
