@@ -9,6 +9,7 @@ from dataprocessing.utils.loading import save_traj_pairs
 from loguru import logger
 from torch import optim
 from torch_geometric.loader import DataLoader
+from utils.visualization import save_mesh
 
 
 def create_folder(path):
@@ -49,6 +50,24 @@ def create_encodings_folders(args):
         os.mkdir(PATH)
 
     return PATH
+
+
+@torch.no_grad()
+def save_pictures(model, data, args):
+    """
+    Performs a validation run on our current model with the validationset
+    saved in the val_loader.
+    """
+    model.eval()
+
+    logger.debug("======= SAVING PIX =======")
+    for idx, batch in enumerate(data):
+        if idx % 10 == 0:
+            batch = batch.to(args.device)
+            # batch.x = F.normalize(batch.x)
+            b_data = batch.clone()
+            pred, _ = model(b_data, Train=False)
+            save_mesh(pred, batch, f"test_{batch.t.item()}", args)
 
 
 @torch.no_grad()
@@ -102,6 +121,7 @@ def encode_and_save_set(args, encoder, dataset):
 
         # deleting to save memory
         del pair_list
+    logger.success(f"Encodings saved at {pair_list_file}")
     logger.success("Encoding done...")
 
 
@@ -169,6 +189,7 @@ def load_args(args):
             "time_stamp",  # We get a new time_stamp
             "save_encodings",  # The old run shouldn't determine whether we save encodings now
             # "instance_id",  # The old run shouldn't determine whether what trajectory we run, yes it should since the structure of our graph and model depends on this
+            "make_pics",
         ]
         for k, v in args_dict.items():
             if k in ignored_keys:
