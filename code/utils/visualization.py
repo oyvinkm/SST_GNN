@@ -188,7 +188,7 @@ def make_animation(
 
 
 def make_gif(model, dataset, args):
-    logger.info("Making gif...")
+    logger.info("Making gif...:")
     PRED = copy.deepcopy(dataset)
     GT = copy.deepcopy(dataset)
     DIFF = copy.deepcopy(dataset)
@@ -197,11 +197,11 @@ def make_gif(model, dataset, args):
             pred, _ = model(Batch.from_data_list([pred_data]).to(args.device))
             pred_data.x = pred.x
             diff_data.x = pred_data.x - gt_data.x.to(args.device)
-    logger.info("processing done...")
+    logger.info("   - data processing done...")
     gif_name = args.time_stamp
-    logger.info(f"saving gif: {gif_name}_anim.gif")
+    logger.info(f"  - saving gif: {gif_name}_anim.gif...")
 
-    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip=4)
+    make_animation(GT, PRED, DIFF, args.save_gif_dir, gif_name, skip=2)
     logger.success("gif complete...")
 
 
@@ -404,8 +404,8 @@ def plot_loss(
 
 
 def plot_test_loss(
-    test_loss,
     ts,
+    test_loss,
     args,
     test_label="validation loss",
     label="Loss",

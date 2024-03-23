@@ -20,6 +20,7 @@ from datetime import datetime
 from dataprocessing.dataset import MeshDataset
 from model.model import MultiScaleAutoEncoder
 from utils.helperfuncs import (
+    decode_and_save_set,
     encode_and_save_set,
     fetch_random_args,
     load_args,
@@ -27,7 +28,7 @@ from utils.helperfuncs import (
     merge_dataset_stats,
     print_args,
     save_graph_structure,
-    save_pair_encodings,
+    save_loss_ts_as_np,
 )
 from utils.parserfuncs import none_or_float, none_or_int, none_or_str, t_or_f
 
@@ -78,15 +79,15 @@ parser.add_argument("-load_model", type=t_or_f, default=True)
 parser.add_argument("-loss_step", type=int, default=10)
 parser.add_argument("-log_step", type=int, default=10)
 parser.add_argument("-latent_dim", type=int, default=64)
-parser.add_argument("-lr", type=float, default=1e-3)
+parser.add_argument("-lr", type=float, default=1e-4)
 parser.add_argument("-make_gif", type=t_or_f, default=False)
 parser.add_argument("-max_latent_nodes", type=int, default=0)
 parser.add_argument("-max_latent_edges", type=int, default=0)
 parser.add_argument("-model_file", type=str, default="model.pt")
-parser.add_argument("-mpl_ratio", type=float, default=0.8)
-parser.add_argument("-mpl_layers", type=int, default=1)
+parser.add_argument("-mpl_ratio", type=float, default=0.3)
+parser.add_argument("-mpl_layers", type=int, default=2)
 parser.add_argument("-normalize", type=t_or_f, default=False)
-parser.add_argument("-num_blocks", type=int, default=1)
+parser.add_argument("-num_blocks", type=int, default=2)
 parser.add_argument("-num_workers", type=int, default=1)
 parser.add_argument("-n_nodes", type=int, default=0)
 parser.add_argument("-opt", type=str, default="adam")
@@ -131,6 +132,7 @@ parser.add_argument("-test_ratio", type=float, default=0.2)
 parser.add_argument("-val_ratio", type=float, default=0.1)
 parser.add_argument("-weight_decay", type=float, default=0.0005)
 args = parser.parse_args()
+args.day = day
 
 
 def main(args):
@@ -141,7 +143,7 @@ def main(args):
     # https://pytorch.org/docs/stable/notes/randomness.html
 
     # Tested to be a decent seed
-    seed = 4
+    seed = 5
     torch.manual_seed(seed)  # Torch
     random.seed(seed)  # Python
     np.random.seed(seed)  # NumPy
@@ -209,6 +211,7 @@ def main(args):
         train_data, batch_size=args.batch_size, shuffle=args.shuffle
     )
     val_loader = DataLoader(val_data, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     logger.success("All data loaded")
 
     # TRAINING
@@ -220,45 +223,49 @@ def main(args):
                 val_loader=val_loader,
                 args=args,
             )
-
+        logger.success("Training done")
     if args.save_plot and not args.load_model:
         save_plot(args, train_losses, validation_losses)
-    loss_ts, ts = loss_over_t(model, val_loader, args)
-    plot_test_loss(loss_ts, ts, args, PATH=args.save_loss_over_t_dir)
+
+    ts, loss_ts = loss_over_t(model, test_loader, args)
+    save_loss_ts_as_np(args, ts, loss_ts)
+    plot_test_loss(ts, loss_ts, args, PATH=args.save_loss_over_t_dir)
 
     # extend the list and sort it with regards to t
     train_data.extend(val_data)
-    train_data.sort(key=lambda g: g.t)
+    train_data.extend(test_data)
+    test_data.sort(key=lambda g: g.t)
     if args.make_gif:
-        make_gif(model, train_data, args)
+        make_gif(model, test_data[:80], args)
     if args.save_encodings:
         logger.info("Encoding graphs")
         encoder = model.encoder.to(args.device)
-        save_pair_encodings(args, encoder)
+        # save_pair_encodings(args, encoder)
         encode_and_save_set(args, encoder, train_data)
+    decode_and_save_set(args, model.decoder.to(args.device), train_data)
+    # write_average_accuracy(args, loss_ts)
 
 
 if __name__ == "__main__":
     # warnings.filterwarnings("ignore", ".*Sparse CSR tensor support is in beta state.*")
     logger.remove(0)
-
     logger.add(sys.stderr, level=args.logger_lvl.upper())
-
     logger.info(f"CUDA is available: {torch.cuda.is_available()}")
     logger.info(f"CUDA has version: {torch.version.cuda}")
-
     logger.debug(print_args(args))
 
     if not args.random_search:
         # run the model with the applied args
+        args.time_stamp += f"_{args.latent_dim=}{args.ae_layers=}{args.num_blocks=}{args.hidden_dim=}{args.batch_size=}"
         main(args)
 
     else:
         # Define the parameters used during random search
-        param_grid = {"latent_dim": [16, 32, 64]}
-        lst = list(ParameterGrid(param_grid))
+        param_grid = {"num_blocks": [2, 3]}
+        # param_grid = {"ae_layers": [1, 2, 3]}
 
-        my_bool = args.pretext_task
+        # param_grid = {"latent_dim": [16,32]}
+        lst = list(ParameterGrid(param_grid))
 
         while len(lst) > 0:
             args, lst = fetch_random_args(args, lst)
@@ -271,5 +278,4 @@ if __name__ == "__main__":
                 print("ValueError, something is NaN")
                 continue
             logger.success("Done")
-            args.pretext_task = my_bool
     logger.success("process_done")

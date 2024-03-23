@@ -1,15 +1,37 @@
 import json
 import os
+import time
 from datetime import datetime
 from random import randint
 
+import numpy as np
 import torch
 from dataprocessing.dataset import DatasetPairs
 from dataprocessing.utils.loading import save_traj_pairs
 from loguru import logger
+from model.utility import LatentVector
 from torch import optim
 from torch_geometric.loader import DataLoader
-from utils.visualization import save_mesh
+
+
+def write_average_accuracy(args, loss_ts):
+    avg_loss = np.mean(loss_ts)
+    accuracy = 1 - avg_loss
+    std = np.std(loss_ts)
+    var = np.var(loss_ts)
+
+    PATH = os.path.join("..", "logs", "accuracy", "accuracies.txt")
+    with open(PATH, "a") as f:
+        f.write(
+            f"\n \n model_{args.latent_dim=}, {args.num_blocks=}, {args.ae_layers=}, {args.epochs=} \n {accuracy=}, {std=}, {var=}"
+        )
+
+
+def save_loss_ts_as_np(args, ts, loss_ts):
+    PATH = os.path.join("..", "logs", "loss_over_t", "files")
+    create_folder(PATH)
+    PATH = os.path.join(PATH, f"{args.latent_dim}.npy")
+    np.save(PATH, np.array([ts, loss_ts]))
 
 
 def create_folder(path):
@@ -36,38 +58,18 @@ def create_encodings_folders(args):
     model_file_splt = args.model_file.split("/")
 
     latent_space_path = os.path.join("..", "data", "latent_space")
-    if not os.path.isdir(latent_space_path):
-        os.mkdir(latent_space_path)
+    create_folder(latent_space_path)
 
-    day_folder = model_file_splt[3]
+    day_folder = model_file_splt[3] if args.load_model else args.day
     PATH = os.path.join(latent_space_path, day_folder)
-    if not os.path.isdir(PATH):
-        os.mkdir(PATH)
+    create_folder(PATH)
 
-    model_folder = model_file_splt[4]
+    model_folder = f"{model_file_splt[4]}" if args.load_model else args.time_stamp
+    model_folder += f"_latent_dim-{args.latent_dim}"
     PATH = os.path.join(PATH, model_folder)
-    if not os.path.isdir(PATH):
-        os.mkdir(PATH)
+    create_folder(PATH)
 
     return PATH
-
-
-@torch.no_grad()
-def save_pictures(model, data, args):
-    """
-    Performs a validation run on our current model with the validationset
-    saved in the val_loader.
-    """
-    model.eval()
-
-    logger.debug("======= SAVING PIX =======")
-    for idx, batch in enumerate(data):
-        if idx % 10 == 0:
-            batch = batch.to(args.device)
-            # batch.x = F.normalize(batch.x)
-            b_data = batch.clone()
-            pred, _ = model(b_data, Train=False)
-            save_mesh(pred, batch, f"test_{batch.t.item()}", args)
 
 
 @torch.no_grad()
@@ -83,6 +85,7 @@ def save_pair_encodings(args, encoder):
     if os.path.exists(pair_list_file):
         os.remove(pair_list_file)
     pair_list = []
+
     for idx, (graph1, graph2, graph3) in enumerate(encoder_loader):
         _, z1, _ = encoder(graph1.to(args.device))
         _, z2, _ = encoder(graph2.to(args.device))
@@ -97,6 +100,7 @@ def save_pair_encodings(args, encoder):
 
         # deleting to save memory
         del pair_list
+
     logger.success("Encoding done...")
 
 
@@ -110,8 +114,9 @@ def encode_and_save_set(args, encoder, dataset):
 
     pair_list = []
     loader = DataLoader(dataset, batch_size=1)
+    start_time = time.time()
     for idx, graph in enumerate(loader):
-        _, z, _ = encoder(graph.to(args.device))
+        _, z, _ = encoder(graph.clone().to(args.device))
 
         if os.path.isfile(pair_list_file):
             pair_list = torch.load(pair_list_file)
@@ -121,8 +126,33 @@ def encode_and_save_set(args, encoder, dataset):
 
         # deleting to save memory
         del pair_list
+    end_time = time.time()
+    elapsed_time = (end_time - start_time) / 10
+    logger.success(f"Encoding was done in {elapsed_time} seconds...")
     logger.success(f"Encodings saved at {pair_list_file}")
-    logger.success("Encoding done...")
+
+
+def decode_and_save_set(args, decoder, dataset):
+    logger.info("decoding graph")
+    PATH = create_encodings_folders(args)
+    encoded_list_file = os.path.join(PATH, "encoded_dataset.pt")
+    target_list_file = os.path.join(PATH, "decoded_dataset.pt")
+    if os.path.exists(target_list_file):
+        os.remove(target_list_file)
+    data = torch.load(encoded_list_file)
+    dataset = [z.z for z in data]
+    loader = DataLoader(dataset, batch_size=1)
+    start_time = time.time()
+    for i in range(10):
+        for idx, z in enumerate(loader):
+            latent_vec = LatentVector(
+                z.clone().to(args.device), [f"{args.instance_id}"]
+            )
+            _ = decoder(latent_vec)
+    end_time = time.time()
+    elapsed_time = (end_time - start_time) / 10
+    logger.success(f"Decoding was done in {elapsed_time} seconds...")
+    logger.success(f"Encodings saved at {target_list_file}")
 
 
 def get_dataset_pairs(args):
@@ -256,6 +286,7 @@ def fetch_random_args(args, lst):
     lst.remove(rand_args)
     args.time_stamp = datetime.now().strftime("%Y_%m_%d-%H.%M")
     for key in rand_args.keys():
+        assert key in args.__dict__, "Key is not in args, check for mispellings"
         args.__dict__[key] = rand_args[key]
         args.time_stamp += "_" + key + "-" + str(rand_args[key])
     logger.success(f"Doing the following config: {args.time_stamp}")

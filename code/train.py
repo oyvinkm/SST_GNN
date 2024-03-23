@@ -164,12 +164,10 @@ def loss_over_t(model, val_loader, args):
         batch = batch.to(args.device)
         b_data = batch.clone()
         pred, _ = model(b_data, Train=False)
-        rec_loss_node = criterion(pred.x[:, :2], batch.x[:, :2])
-        loss = rec_loss_node
+        loss = criterion(pred.x[:, :2], batch.x[:, :2])
         loss_over_t.append(loss.item())
-        ts.append(batch.t.cpu())
-
-    return loss_over_t, ts
+        ts.append(int(batch.t.cpu()[0]))
+    return ts, loss_over_t
 
 
 def augment_batch(b_data):
